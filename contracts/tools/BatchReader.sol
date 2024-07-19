@@ -5,8 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "./ERC1820Client.sol";
@@ -60,7 +58,6 @@ abstract contract IERC1400TokensValidatorExtended is IExtensionTypes {
  * @dev Proxy contract to read multiple information from the smart contract in a single contract call.
  */
 contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
-    using SafeMath for uint256;
 
     string internal constant BALANCE_READER = "BatchReader";
 
@@ -117,7 +114,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
         for (uint256 i = 0; i < tokens.length; i++) {
             address[] memory controllers = IERC1400Extended(tokens[i]).controllers();
             batchControllersLength[i] = controllers.length;
-            controllersLength = controllersLength.add(controllers.length);
+            controllersLength += controllers.length;
         }
 
         address[] memory batchControllersResponse = new address[](controllersLength);
@@ -151,7 +148,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
             if (batchTokenExtension[i] != address(0)) {
                 (,,,,,address[] memory extensionControllers) = IERC1400TokensValidatorExtended(batchTokenExtension[i]).retrieveTokenSetup(tokens[i]);
                 batchExtensionControllersLength[i] = extensionControllers.length;
-                extensionControllersLength = extensionControllersLength.add(extensionControllers.length);
+                extensionControllersLength += extensionControllers.length;
             } else {
                 batchExtensionControllersLength[i] = 0;
             }
@@ -290,7 +287,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
         for (uint256 j = 0; j < tokens.length; j++) {
             IERC721Enumerable token = IERC721Enumerable(tokens[j]);
             uint256[][] memory batchBalance = new uint256[][](tokenHolders.length);
-            
+
             for (uint256 i = 0; i < tokenHolders.length; i++) {
                 address holder = tokenHolders[i];
                 uint256 tokenCount = token.balanceOf(holder);
@@ -334,7 +331,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
      */
     function batchBalanceOfByPartition(address[] memory tokens, address[] memory tokenHolders) public view returns (uint256[] memory, bytes32[] memory, uint256[] memory) {
         (uint256[] memory totalPartitionsLengths, bytes32[] memory batchTotalPartitions_,) = batchTotalPartitions(tokens);
-        
+
         uint256[] memory batchBalanceOfByPartitionResponse = new uint256[](tokenHolders.length * batchTotalPartitions_.length);
 
         for (uint256 i = 0; i < tokenHolders.length; i++) {
@@ -356,7 +353,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
      */
     function batchSpendableBalanceOfByPartition(address[] memory tokens, address[] memory tokenHolders) public view returns (uint256[] memory, bytes32[] memory, uint256[] memory) {
         (uint256[] memory totalPartitionsLengths, bytes32[] memory batchTotalPartitions_,) = batchTotalPartitions(tokens);
-        
+
         uint256[] memory batchSpendableBalanceOfByPartitionResponse = new uint256[](tokenHolders.length * batchTotalPartitions_.length);
 
         for (uint256 i = 0; i < tokenHolders.length; i++) {
@@ -389,7 +386,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
         for (uint256 i = 0; i < tokens.length; i++) {
             bytes32[] memory totalPartitions = IERC1400Extended(tokens[i]).totalPartitions();
             batchTotalPartitionsLength[i] = totalPartitions.length;
-            totalPartitionsLength = totalPartitionsLength.add(totalPartitions.length);
+            totalPartitionsLength += totalPartitions.length;
         }
 
         bytes32[] memory batchTotalPartitionsResponse = new bytes32[](totalPartitionsLength);
@@ -420,7 +417,7 @@ contract BatchReader is IExtensionTypes, ERC1820Client, ERC1820Implementer {
         for (uint256 i = 0; i < tokens.length; i++) {
             bytes32[] memory defaultPartitions = IERC1400Extended(tokens[i]).getDefaultPartitions();
             batchDefaultPartitionsLength[i] = defaultPartitions.length;
-            defaultPartitionsLength = defaultPartitionsLength.add(defaultPartitions.length);
+            defaultPartitionsLength += defaultPartitions.length;
         }
 
         bytes32[] memory batchDefaultPartitionsResponse = new bytes32[](defaultPartitionsLength);

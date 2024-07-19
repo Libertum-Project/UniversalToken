@@ -72,7 +72,7 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
     address certificateSigner,
     CertificateValidation certificateActivated
   )
-    ERC1400(name, symbol, granularity, controllers, defaultPartitions)
+    ERC1400(name, symbol, granularity, controllers, defaultPartitions, newOwner)
   {
     if(extension != address(0)) {
       Extension(extension).registerTokenSetup(
@@ -90,10 +90,6 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
       }
 
       _setTokenExtension(extension, ERC1400_TOKENS_VALIDATOR, true, true, true);
-    }
-
-    if(newOwner != address(0)) {
-      transferOwnership(newOwner);
     }
   }
 

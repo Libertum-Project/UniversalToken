@@ -97,7 +97,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
   enum TradeType {Allowance, Hold, Escrow}
 
   enum Holder {Holder1, Holder2}
-    
+
   string internal constant ERC1400_TOKENS_VALIDATOR = "ERC1400TokensValidator";
 
   /**
@@ -138,7 +138,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     bool approved;
     TradeType tradeType;
   }
-  
+
   /**
    * @dev Input data for the requestTrade function
    * @param holder1 Address of the first token holder.
@@ -245,7 +245,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
    * @dev Initialize Swaps + register
    * the contract implementation in ERC1820Registry.
    */
-  constructor(bool owned) {
+  constructor(bool owned, address owner) Ownable(owner) {
     ERC1820Implementer._setInterface(DELIVERY_VS_PAYMENT);
     ERC1820Implementer._setInterface(ERC1400_TOKENS_RECIPIENT);
     setInterfaceImplementation(ERC1400_TOKENS_RECIPIENT, address(this));
@@ -334,7 +334,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
       require(partition == selectedUserTradeData.tokenId, "Tokens of the wrong partition sent");
       require(Standard.ERC1400 == selectedUserTradeData.tokenStandard, "Tokens of the wrong standard sent");
 
-      _acceptTrade(index, from, 0, value, preimage);         
+      _acceptTrade(index, from, 0, value, preimage);
     }
   }
 
@@ -378,7 +378,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     uint256 settlementDate,
     UserTradeData memory userTradeData1,
     UserTradeData memory userTradeData2
-  ) 
+  )
     internal
   {
     if(userTradeData1.tokenStandard == Standard.ETH) {
@@ -393,7 +393,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
       require(userTradeData1.tokenStandard == Standard.ERC20 || userTradeData1.tokenStandard == Standard.ERC1400, "Invalid token standard for hold trade type");
       require(userTradeData1.tokenId != bytes32(0), "No holdId specified");
     }
-    
+
     if (userTradeData2.tradeType == TradeType.Hold) {
       require(userTradeData2.tokenStandard == Standard.ERC20 || userTradeData2.tokenStandard == Standard.ERC1400, "Invalid token standard for hold trade type");
       require(userTradeData2.tokenId != bytes32(0), "No holdId specified");
@@ -404,7 +404,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     }
 
     require(holder1 != address(0), "A trade can not be created with the zero address");
-    
+
     _index++;
 
     uint256 _expirationDate = (expirationDate > block.timestamp) ? expirationDate : (block.timestamp + SECONDS_IN_MONTH);
@@ -459,7 +459,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     if(selectedUserTradeData.tradeType == TradeType.Escrow) {
       if(selectedUserTradeData.tokenStandard == Standard.ETH) {
         require(ethValue == selectedUserTradeData.tokenValue, "Amount of ETH is not correct");
-      } else if(selectedUserTradeData.tokenStandard == Standard.ERC20) {        
+      } else if(selectedUserTradeData.tokenStandard == Standard.ERC20) {
         IERC20(selectedUserTradeData.tokenAddress).transferFrom(sender, address(this), selectedUserTradeData.tokenValue);
       } else if(selectedUserTradeData.tokenStandard == Standard.ERC721) {
         IERC721(selectedUserTradeData.tokenAddress).transferFrom(sender, address(this), uint256(selectedUserTradeData.tokenId));
@@ -480,7 +480,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
       trade.userTradeData2.accepted = true;
     }
 
-    
+
     bool settlementDatePassed = block.timestamp >= trade.settlementDate;
     bool tradeApproved = getTradeApprovalStatus(index);
     //Execute both holds of a trade if the following conditions are met
@@ -539,7 +539,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     bytes32 tokenId = userTradeData.tokenId;
     Standard tokenStandard = userTradeData.tokenStandard;
 
-    if(tokenStandard == Standard.ERC20) {        
+    if(tokenStandard == Standard.ERC20) {
       return(IERC20(tokenAddress).allowance(sender, address(this)) >= tokenValue);
     } else if(tokenStandard == Standard.ERC721) {
       return(IERC721(tokenAddress).getApproved(uint256(tokenId)) == address(this));
@@ -576,7 +576,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     if(_isTokenController[trade.userTradeData1.tokenAddress][msg.sender]) {
       trade.userTradeData1.approved = approved;
     }
-    
+
     if(_isTokenController[trade.userTradeData2.tokenAddress][msg.sender]) {
       trade.userTradeData2.approved = approved;
     }
@@ -630,7 +630,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     require(block.timestamp >= trade.settlementDate, "Trade can only be executed on or after settlement date");
 
     require(getTradeAcceptanceStatus(index), "Trade has not been accepted by all token holders yet");
-    
+
     require(getTradeApprovalStatus(index), "Trade has not been approved by all token controllers yet");
 
     _executeTrade(index, preimage);
@@ -677,7 +677,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
   function forceTradeWithPreimage(uint256 index, bytes32 preimage) public {
     Trade storage trade = _trades[index];
     require(trade.state == State.Pending, "Trade is not pending");
-    
+
     address tokenAddress1 = trade.userTradeData1.tokenAddress;
     uint256 tokenValue1 = trade.userTradeData1.tokenValue;
     bool accepted1 = trade.userTradeData1.accepted;
@@ -749,7 +749,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     trade.state = State.Cancelled;
   }
 
-  function _transferUsersTokens(uint256 index, Holder holder, uint256 value, bool revertTransfer, bytes32 preimage) internal { 
+  function _transferUsersTokens(uint256 index, Holder holder, uint256 value, bool revertTransfer, bytes32 preimage) internal {
     Trade storage trade = _trades[index];
 
     UserTradeData memory senderUserTradeData = (holder == Holder.Holder1) ? trade.userTradeData1 : trade.userTradeData2;
@@ -763,7 +763,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     }
   }
 
-  function _executeHoldOnUsersTokens(uint256 index, Holder holder, uint256, bool, bytes32 preimage) internal { 
+  function _executeHoldOnUsersTokens(uint256 index, Holder holder, uint256, bool, bytes32 preimage) internal {
     Trade storage trade = _trades[index];
 
     address sender = (holder == Holder.Holder1) ? trade.holder1 : trade.holder2;
@@ -875,7 +875,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     address tokenAddress = userTradeData.tokenAddress;
     bytes32 holdId = userTradeData.tokenId;
     Standard tokenStandard = userTradeData.tokenStandard;
-    
+
     if(tokenStandard == Standard.ERC1400) {
       address tokenExtension = interfaceAddr(tokenAddress, ERC1400_TOKENS_VALIDATOR);
       require(
@@ -924,7 +924,7 @@ contract Swaps is Ownable, ERC1820Client, IERC1400TokensRecipient, ERC1820Implem
     if(operatorData.length == 0) { // The reason for this check is to avoid a certificate gets interpreted as a flag by mistake
       return false;
     }
-    
+
     bytes32 flag = _getTradeFlag(data);
     if(data.length == 320 && flag == TRADE_PROPOSAL_FLAG) {
       return true;

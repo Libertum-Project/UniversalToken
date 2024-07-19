@@ -5,7 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "../../tools/ERC1820Client.sol";
@@ -26,7 +25,6 @@ interface IERC1400Extended {
 }
 
 contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Implementer {
-  using SafeMath for uint256;
 
   string constant internal ERC1400_TOKENS_VALIDATOR = "ERC1400TokensValidator";
   string constant internal ERC1400_TOKENS_CHECKER = "ERC1400TokensChecker";
@@ -94,7 +92,7 @@ contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Im
        return(hex"57", "", partition); // 0x57	invalid receiver
 
      address hookImplementation;
-     
+
      hookImplementation = ERC1820Client.interfaceAddr(from, ERC1400_TOKENS_SENDER);
      if((hookImplementation != address(0))
        && !IERC1400TokensSender(hookImplementation).canTransfer(payload, partition, operator, from, to, value, data, operatorData))
@@ -107,12 +105,12 @@ contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Im
 
      hookImplementation = ERC1820Client.interfaceAddr(msg.sender, ERC1400_TOKENS_VALIDATOR);
      IERC1400TokensValidator.ValidateData memory vdata = IERC1400TokensValidator.ValidateData(msg.sender, payload, partition, operator, from, to, value, data, operatorData);
-     if((hookImplementation != address(0)) 
+     if((hookImplementation != address(0))
        && !IERC1400TokensValidator(hookImplementation).canValidate(vdata))
        return(hex"54", "", partition); // 0x54	transfers halted (contract paused)
 
      uint256 granularity = IERC1400Extended(msg.sender).granularity();
-     if(!(value.div(granularity).mul(granularity) == value))
+     if((value / granularity) * granularity != value)
        return(hex"50", "", partition); // 0x50	transfer failure
 
      return(hex"51", "", partition);  // 0x51	transfer success

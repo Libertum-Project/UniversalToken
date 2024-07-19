@@ -5,7 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -29,7 +28,6 @@ import "./tools/DomainAware.sol";
  * @dev ERC1400 logic
  */
 contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer, MinterRole, DomainAware {
-  using SafeMath for uint256;
 
   // Token
   string constant internal ERC1400_INTERFACE_NAME = "ERC1400Token";
@@ -178,8 +176,9 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     string memory tokenSymbol,
     uint256 tokenGranularity,
     address[] memory initialControllers,
-    bytes32[] memory defaultPartitions
-  ) {
+    bytes32[] memory defaultPartitions,
+    address owner
+  ) Ownable(owner) {
     _name = tokenName;
     _symbol = tokenSymbol;
     _totalSupply = 0;
@@ -266,7 +265,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
     if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] = _allowed[from][msg.sender].sub(value);
+      _allowed[from][msg.sender] -= value;
     } else {
       _allowed[from][msg.sender] = 0;
     }
@@ -389,7 +388,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
     if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] = _allowed[from][msg.sender].sub(value);
+      _allowed[from][msg.sender] -= value;
     } else {
       _allowed[from][msg.sender] = 0;
     }
@@ -451,7 +450,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       || (value <= _allowedByPartition[partition][from][msg.sender]), "53"); // 0x53	insufficient allowance
 
     if(_allowedByPartition[partition][from][msg.sender] >= value) {
-      _allowedByPartition[partition][from][msg.sender] = _allowedByPartition[partition][from][msg.sender].sub(value);
+      _allowedByPartition[partition][from][msg.sender] -= value;
     } else {
       _allowedByPartition[partition][from][msg.sender] = 0;
     }
@@ -580,7 +579,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     _issueByPartition(partition, msg.sender, tokenHolder, value, data);
   }
   /************************************************************************************************/
-  
+
 
   /*************************************** Token Redemption ***************************************/
   /**
@@ -609,7 +608,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
     if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] = _allowed[from][msg.sender].sub(value);
+      _allowed[from][msg.sender] -= value;
     } else {
       _allowed[from][msg.sender] = 0;
     }
@@ -642,7 +641,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     require(_isOperatorForPartition(partition, msg.sender, tokenHolder) || value <= _allowedByPartition[partition][tokenHolder][msg.sender], "58"); // 0x58	invalid operator (transfer agent)
 
     if(_allowedByPartition[partition][tokenHolder][msg.sender] >= value) {
-      _allowedByPartition[partition][tokenHolder][msg.sender] = _allowedByPartition[partition][tokenHolder][msg.sender].sub(value);
+      _allowedByPartition[partition][tokenHolder][msg.sender] -= value;
     } else {
       _allowedByPartition[partition][tokenHolder][msg.sender] = 0;
     }
@@ -803,7 +802,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   }
   /************************************************************************************************/
 
-  
+
   /************************************** Token extension *****************************************/
   /**
    * @dev Set token extension contract address.
@@ -825,7 +824,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @dev Migrate contract.
    *
    * ===> CAUTION: DEFINITIVE ACTION
-   * 
+   *
    * This function shall be called once a new version of the smart contract has been created.
    * Once this function is called:
    *  - The address of the new smart contract is set in ERC1820 registry
@@ -863,11 +862,11 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     require(_isMultiple(value), "50"); // 0x50	transfer failure
     require(to != address(0), "57"); // 0x57	invalid receiver
     require(_balances[from] >= value, "52"); // 0x52	insufficient balance
-  
-    _balances[from] = _balances[from].sub(value);
-    _balances[to] = _balances[to].add(value);
 
-    emit Transfer(from, to, value); // ERC20 retrocompatibility 
+    _balances[from] -= value;
+    _balances[to] += value;
+
+    emit Transfer(from, to, value); // ERC20 retrocompatibility
   }
   /**
    * @dev Transfer tokens from a specific partition.
@@ -985,8 +984,8 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param value Number of tokens to transfer.
    */
   function _removeTokenFromPartition(address from, bytes32 partition, uint256 value) internal {
-    _balanceOfByPartition[from][partition] = _balanceOfByPartition[from][partition].sub(value);
-    _totalSupplyByPartition[partition] = _totalSupplyByPartition[partition].sub(value);
+    _balanceOfByPartition[from][partition] -= value;
+    _totalSupplyByPartition[partition] -= value;
 
     // If the total supply is zero, finds and deletes the partition.
     if(_totalSupplyByPartition[partition] == 0) {
@@ -1030,13 +1029,13 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
         _partitionsOf[to].push(partition);
         _indexOfPartitionsOf[to][partition] = _partitionsOf[to].length;
       }
-      _balanceOfByPartition[to][partition] = _balanceOfByPartition[to][partition].add(value);
+      _balanceOfByPartition[to][partition] += value;
 
       if (_indexOfTotalPartitions[partition] == 0) {
         _totalPartitions.push(partition);
         _indexOfTotalPartitions[partition] = _totalPartitions.length;
       }
-      _totalSupplyByPartition[partition] = _totalSupplyByPartition[partition].add(value);
+      _totalSupplyByPartition[partition] += value;
     }
   }
   /**
@@ -1045,7 +1044,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return 'true' if 'value' is a multiple of the granularity.
    */
   function _isMultiple(uint256 value) internal view returns(bool) {
-    return(value.div(_granularity).mul(_granularity) == value);
+    return (value / _granularity) * _granularity == value;
   }
   /************************************************************************************************/
 
@@ -1177,13 +1176,13 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function _issue(address operator, address to, uint256 value, bytes memory data)
     internal
-    isNotMigratedToken  
+    isNotMigratedToken
   {
     require(_isMultiple(value), "50"); // 0x50	transfer failure
     require(to != address(0), "57"); // 0x57	invalid receiver
 
-    _totalSupply = _totalSupply.add(value);
-    _balances[to] = _balances[to].add(value);
+    _totalSupply += value;
+    _balances[to] += value;
 
     emit Issued(operator, to, value, data);
     emit Transfer(address(0), to, value); // ERC20 retrocompatibility
@@ -1233,8 +1232,8 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     require(from != address(0), "56"); // 0x56	invalid sender
     require(_balances[from] >= value, "52"); // 0x52	insufficient balance
 
-    _balances[from] = _balances[from].sub(value);
-    _totalSupply = _totalSupply.sub(value);
+    _balances[from] -= value;
+    _totalSupply -= value;
 
     emit Redeemed(operator, from, value, data);
     emit Transfer(from, address(0), value);  // ERC20 retrocompatibility
@@ -1412,7 +1411,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @dev Migrate contract.
    *
    * ===> CAUTION: DEFINITIVE ACTION
-   * 
+   *
    * This function shall be called once a new version of the smart contract has been created.
    * Once this function is called:
    *  - The address of the new smart contract is set in ERC1820 registry

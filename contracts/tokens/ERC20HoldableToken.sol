@@ -5,7 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./ERC20Token.sol";
 import "../interface/IERC20HoldableToken.sol";
 
@@ -19,7 +18,6 @@ import "../interface/IERC20HoldableToken.sol";
     A recipient does not have to get set at the time of the hold, which means it will have to be specified when the hold is executed.
  */
 contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
-    using SafeMath for uint256;
 
     // mapping of accounts to hold data
     mapping(bytes32 => ERC20HoldData) internal holds;
@@ -39,7 +37,7 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
         _;
     }
 
-    constructor(string memory name, string memory symbol, uint8 decimals) ERC20Token(name, symbol, decimals) {}
+    constructor(string memory name, string memory symbol, uint8 decimals, address owner) ERC20Token(name, symbol, decimals, owner) {}
 
     function generateHoldId(
         address recipient,
@@ -74,7 +72,7 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
         bytes32 holdId = _holdHashToId[holdHash];
 
         return (holdHash, holdId);
-    }  
+    }
 
     /**
      @notice Called by the sender to hold some tokens for a recipient that the sender can not release back to themself until after the expiration date.
@@ -125,10 +123,8 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
             lockHash,
             HoldStatusCode.Ordered
         );
-        accountHoldBalances[msg.sender] = accountHoldBalances[msg.sender].add(
-            amount
-        );
-        totalSupplyOnHold = totalSupplyOnHold.add(amount);
+        accountHoldBalances[msg.sender] += amount;
+        totalSupplyOnHold += amount;
 
         emit NewHold(
             holdId,
@@ -227,11 +223,8 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
         super._transfer(holds[holdId].sender, recipient, holds[holdId].amount);
 
         holds[holdId].status = HoldStatusCode.Executed;
-        accountHoldBalances[holds[holdId]
-            .sender] = accountHoldBalances[holds[holdId].sender].sub(
-            holds[holdId].amount
-        );
-        totalSupplyOnHold = totalSupplyOnHold.sub(holds[holdId].amount);
+        accountHoldBalances[holds[holdId].sender] -= holds[holdId].amount;
+        totalSupplyOnHold -= holds[holdId].amount;
 
         (bytes32 holdHash,) = retrieveHoldHashId(
             holds[holdId].notary,
@@ -262,11 +255,8 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
             holds[holdId].status = HoldStatusCode.ReleasedByNotary;
         }
 
-        accountHoldBalances[holds[holdId]
-            .sender] = accountHoldBalances[holds[holdId].sender].sub(
-            holds[holdId].amount
-        );
-        totalSupplyOnHold = totalSupplyOnHold.sub(holds[holdId].amount);
+        accountHoldBalances[holds[holdId].sender] -= holds[holdId].amount;
+        totalSupplyOnHold -= holds[holdId].amount;
 
         emit ReleaseHold(holdId, msg.sender);
     }
@@ -277,7 +267,7 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
      */
     function balanceOf(address account) public override(ERC20, IERC20) view returns (uint256) {
         return super.balanceOf(account);
-        
+
     }
 
     /**
@@ -293,7 +283,7 @@ contract ERC20HoldableToken is ERC20Token, IERC20HoldableToken {
      @param account owner of the tokens
      */
     function spendableBalanceOf(address account) public override view returns (uint256) {
-        return super.balanceOf(account).sub(accountHoldBalances[account]);
+        return super.balanceOf(account) - accountHoldBalances[account];
     }
 
     /**
