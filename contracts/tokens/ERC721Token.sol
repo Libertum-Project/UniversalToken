@@ -3,21 +3,20 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "../interface/ERC1820Implementer.sol";
 import "../roles/MinterRole.sol";
 
-contract ERC721Token is Ownable, ERC721, ERC721URIStorage, ERC721Enumerable, ERC721Burnable, ERC721Pausable,  MinterRole, ERC1820Implementer, AccessControlEnumerable {
+contract ERC721Token is Ownable, ERC721URIStorage, ERC721Enumerable, ERC721Burnable, ERC721Pausable,  MinterRole, ERC1820Implementer, AccessControl {
   string constant internal ERC721_TOKEN = "ERC721Token";
   string internal _baseUri;
   string internal _contractUri;
 
-  constructor(string memory name, string memory symbol, string memory baseUri, string memory contractUri) ERC721(name, symbol) {
+  constructor(string memory name, string memory symbol, string memory baseUri, string memory contractUri, address owner) ERC721(name, symbol) Ownable(owner) {
     ERC1820Implementer._setInterface(ERC721_TOKEN);
     _baseUri = baseUri;
     _contractUri = contractUri;
@@ -33,7 +32,7 @@ contract ERC721Token is Ownable, ERC721, ERC721URIStorage, ERC721Enumerable, ERC
       _mint(to, tokenId);
       return true;
   }
-  
+
   function mintAndSetTokenURI(address to, uint256 tokenId, string memory uri) public onlyMinter returns (bool) {
       _mint(to, tokenId);
       _setTokenURI(tokenId, uri);
@@ -52,12 +51,12 @@ contract ERC721Token is Ownable, ERC721, ERC721URIStorage, ERC721Enumerable, ERC
       return _baseUri;
   }
 
-  function _beforeTokenTransfer(
-      address from,
+  function _update(
       address to,
-      uint256 tokenId
-  ) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
-      super._beforeTokenTransfer(from, to, tokenId);
+      uint256 tokenId,
+      address auth
+  ) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) returns (address) {
+      return super._update(to, tokenId, auth);
   }
 
   /**
@@ -67,14 +66,14 @@ contract ERC721Token is Ownable, ERC721, ERC721URIStorage, ERC721Enumerable, ERC
       public
       view
       virtual
-      override(AccessControlEnumerable, ERC721, ERC721Enumerable)
+      override(AccessControl, ERC721, ERC721Enumerable, ERC721URIStorage)
       returns (bool)
   {
       return super.supportsInterface(interfaceId);
   }
 
-  function _burn(uint256 tokenId) internal virtual override(ERC721, ERC721URIStorage) {
-      ERC721URIStorage._burn(tokenId);
+  function _increaseBalance(address account, uint128 value) internal virtual override(ERC721Enumerable, ERC721) {
+      super._increaseBalance(account, value);
   }
 
   function setContractURI(string memory uri) public virtual onlyOwner {
