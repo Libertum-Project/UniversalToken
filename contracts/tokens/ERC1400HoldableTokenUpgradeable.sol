@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import "../ERC1400.sol";
+import "../ERC1400Upgradeable.sol";
 
 /**
  * @notice Interface to the extension types
@@ -29,7 +29,7 @@ abstract contract Extension is IExtensionTypes {
   ) external virtual;
 }
 
-contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
+contract ERC1400HoldableTokenUpgradeable is ERC1400Upgradeable, IExtensionTypes {
 
   /**
    * @dev Initialize ERC1400 + setup the token extension.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import "../ERC1400.sol";
+import "../ERC1400Upgradeable.sol";
 
 /**
  * @notice Interface to the extension contract
@@ -25,7 +25,7 @@ abstract contract ExtensionMock {
   ) external virtual;
 }
 
-contract FakeERC1400Mock is ERC1400 {
+contract FakeERC1400Mock is ERC1400Upgradeable {
 
   constructor(
     string memory name,

@@ -27,7 +27,7 @@ import "./ERC1400Storage.sol";
  * @title ERC1400
  * @dev ERC1400 logic
  */
-contract ERC1400 is IERC20, IERC1400, ERC1400Storage, OwnableUpgradeable, ERC1820Client, ERC1820Implementer, MinterRoleUpgradeable, DomainAwareUpgradeable {
+contract ERC1400Upgradeable is IERC20, IERC1400, ERC1400Storage, OwnableUpgradeable, ERC1820Client, ERC1820Implementer, MinterRoleUpgradeable, DomainAwareUpgradeable {
 
   // Token
   string constant internal ERC1400_INTERFACE_NAME = "ERC1400Token";
