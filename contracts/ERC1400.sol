@@ -5,13 +5,13 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "./tools/ERC1820Client.sol";
 import "./interface/ERC1820Implementer.sol";
 
-import "./roles/MinterRole.sol";
+import "./roles/MinterRoleUpgradeable.sol";
 
 import "./IERC1400.sol";
 
@@ -20,14 +20,14 @@ import "./extensions/tokenExtensions/IERC1400TokensValidator.sol";
 import "./extensions/tokenExtensions/IERC1400TokensChecker.sol";
 import "./extensions/userExtensions/IERC1400TokensSender.sol";
 import "./extensions/userExtensions/IERC1400TokensRecipient.sol";
-import "./tools/DomainAware.sol";
-
+import "./tools/DomainAwareUpgradeable.sol";
+import "./ERC1400Storage.sol";
 
 /**
  * @title ERC1400
  * @dev ERC1400 logic
  */
-contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer, MinterRole, DomainAware {
+contract ERC1400 is IERC20, IERC1400, ERC1400Storage, OwnableUpgradeable, ERC1820Client, ERC1820Implementer, MinterRoleUpgradeable, DomainAwareUpgradeable {
 
   // Token
   string constant internal ERC1400_INTERFACE_NAME = "ERC1400Token";
@@ -41,110 +41,63 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   string constant internal ERC1400_TOKENS_SENDER = "ERC1400TokensSender";
   string constant internal ERC1400_TOKENS_RECIPIENT = "ERC1400TokensRecipient";
 
-  /************************************* Token description ****************************************/
-  string internal _name;
-  string internal _symbol;
-  uint256 internal _granularity;
-  uint256 internal _totalSupply;
-  bool internal _migrated;
-  /************************************************************************************************/
+  /**
+   * @dev Initialize ERC1400 + register the contract implementation in ERC1820Registry.
+   * @param tokenName Name of the token.
+   * @param tokenSymbol Symbol of the token.
+   * @param tokenGranularity Granularity of the token.
+   * @param initialControllers Array of initial controllers.
+   * @param defaultPartitions Partitions chosen by default, when partition is
+   * not specified, like the case ERC20 tranfers.
+   */
+  function __ERC1400_init(
+    string memory tokenName,
+    string memory tokenSymbol,
+    uint256 tokenGranularity,
+    address[] memory initialControllers,
+    bytes32[] memory defaultPartitions,
+    address owner
+  ) internal {
+    __MinterRole_init();
+    __DomainAware_init();
+    __Ownable_init(owner);
 
+    ERC1400Store storage $ = _ERC1400Store();
+    $.name = tokenName;
+    $.symbol = tokenSymbol;
+    $.totalSupply = 0;
+    require(tokenGranularity >= 1); // Constructor Blocked - Token granularity can not be lower than 1
+    $.granularity = tokenGranularity;
 
-  /**************************************** Token behaviours **************************************/
-  // Indicate whether the token can still be controlled by operators or not anymore.
-  bool internal _isControllable;
+    _setControllers(initialControllers);
 
-  // Indicate whether the token can still be issued by the issuer or not anymore.
-  bool internal _isIssuable;
-  /************************************************************************************************/
+    $.defaultPartitions = defaultPartitions;
 
+    $.isControllable = true;
+    $.isIssuable = true;
 
-  /********************************** ERC20 Token mappings ****************************************/
-  // Mapping from tokenHolder to balance.
-  mapping(address => uint256) internal _balances;
+    // Register contract in ERC1820 registry
+    ERC1820Client.setInterfaceImplementation(ERC1400_INTERFACE_NAME, address(this));
+    ERC1820Client.setInterfaceImplementation(ERC20_INTERFACE_NAME, address(this));
 
-  // Mapping from (tokenHolder, spender) to allowed value.
-  mapping (address => mapping (address => uint256)) internal _allowed;
-  /************************************************************************************************/
-
-
-  /**************************************** Documents *********************************************/
-  struct Doc {
-    string docURI;
-    bytes32 docHash;
-    uint256 timestamp;
+    // Indicate token verifies ERC1400 and ERC20 interfaces
+    ERC1820Implementer._setInterface(ERC1400_INTERFACE_NAME); // For migration
+    ERC1820Implementer._setInterface(ERC20_INTERFACE_NAME); // For migration
   }
-  // Mapping for documents.
-  mapping(bytes32 => Doc) internal _documents;
-  mapping(bytes32 => uint256) internal _indexOfDocHashes;
-  bytes32[] internal _docHashes;
-  /************************************************************************************************/
-
-
-  /*********************************** Partitions  mappings ***************************************/
-  // List of partitions.
-  bytes32[] internal _totalPartitions;
-
-  // Mapping from partition to their index.
-  mapping (bytes32 => uint256) internal _indexOfTotalPartitions;
-
-  // Mapping from partition to global balance of corresponding partition.
-  mapping (bytes32 => uint256) internal _totalSupplyByPartition;
-
-  // Mapping from tokenHolder to their partitions.
-  mapping (address => bytes32[]) internal _partitionsOf;
-
-  // Mapping from (tokenHolder, partition) to their index.
-  mapping (address => mapping (bytes32 => uint256)) internal _indexOfPartitionsOf;
-
-  // Mapping from (tokenHolder, partition) to balance of corresponding partition.
-  mapping (address => mapping (bytes32 => uint256)) internal _balanceOfByPartition;
-
-  // List of token default partitions (for ERC20 compatibility).
-  bytes32[] internal _defaultPartitions;
-  /************************************************************************************************/
-
-
-  /********************************* Global operators mappings ************************************/
-  // Mapping from (operator, tokenHolder) to authorized status. [TOKEN-HOLDER-SPECIFIC]
-  mapping(address => mapping(address => bool)) internal _authorizedOperator;
-
-  // Array of controllers. [GLOBAL - NOT TOKEN-HOLDER-SPECIFIC]
-  address[] internal _controllers;
-
-  // Mapping from operator to controller status. [GLOBAL - NOT TOKEN-HOLDER-SPECIFIC]
-  mapping(address => bool) internal _isController;
-  /************************************************************************************************/
-
-
-  /******************************** Partition operators mappings **********************************/
-  // Mapping from (partition, tokenHolder, spender) to allowed value. [TOKEN-HOLDER-SPECIFIC]
-  mapping(bytes32 => mapping (address => mapping (address => uint256))) internal _allowedByPartition;
-
-  // Mapping from (tokenHolder, partition, operator) to 'approved for partition' status. [TOKEN-HOLDER-SPECIFIC]
-  mapping (address => mapping (bytes32 => mapping (address => bool))) internal _authorizedOperatorByPartition;
-
-  // Mapping from partition to controllers for the partition. [NOT TOKEN-HOLDER-SPECIFIC]
-  mapping (bytes32 => address[]) internal _controllersByPartition;
-
-  // Mapping from (partition, operator) to PartitionController status. [NOT TOKEN-HOLDER-SPECIFIC]
-  mapping (bytes32 => mapping (address => bool)) internal _isControllerByPartition;
-  /************************************************************************************************/
-
 
   /***************************************** Modifiers ********************************************/
   /**
    * @dev Modifier to verify if token is issuable.
    */
   modifier isIssuableToken() {
-    require(_isIssuable, "55"); // 0x55	funds locked (lockup period)
+    require(_ERC1400Store().isIssuable, "55"); // 0x55	funds locked (lockup period)
     _;
   }
   /**
    * @dev Modifier to make a function callable only when the contract is not migrated.
    */
   modifier isNotMigratedToken() {
-      require(!_migrated, "54"); // 0x54	transfers halted (contract paused)
+      require(!_ERC1400Store().migrated, "54"); // 0x54	transfers halted (contract paused)
       _;
   }
   /**
@@ -162,45 +115,6 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   /************************************************************************************************/
 
 
-  /**
-   * @dev Initialize ERC1400 + register the contract implementation in ERC1820Registry.
-   * @param tokenName Name of the token.
-   * @param tokenSymbol Symbol of the token.
-   * @param tokenGranularity Granularity of the token.
-   * @param initialControllers Array of initial controllers.
-   * @param defaultPartitions Partitions chosen by default, when partition is
-   * not specified, like the case ERC20 tranfers.
-   */
-  constructor(
-    string memory tokenName,
-    string memory tokenSymbol,
-    uint256 tokenGranularity,
-    address[] memory initialControllers,
-    bytes32[] memory defaultPartitions,
-    address owner
-  ) Ownable(owner) {
-    _name = tokenName;
-    _symbol = tokenSymbol;
-    _totalSupply = 0;
-    require(tokenGranularity >= 1); // Constructor Blocked - Token granularity can not be lower than 1
-    _granularity = tokenGranularity;
-
-    _setControllers(initialControllers);
-
-    _defaultPartitions = defaultPartitions;
-
-    _isControllable = true;
-    _isIssuable = true;
-
-    // Register contract in ERC1820 registry
-    ERC1820Client.setInterfaceImplementation(ERC1400_INTERFACE_NAME, address(this));
-    ERC1820Client.setInterfaceImplementation(ERC20_INTERFACE_NAME, address(this));
-
-    // Indicate token verifies ERC1400 and ERC20 interfaces
-    ERC1820Implementer._setInterface(ERC1400_INTERFACE_NAME); // For migration
-    ERC1820Implementer._setInterface(ERC20_INTERFACE_NAME); // For migration
-  }
-
 
   /************************************************************************************************/
   /****************************** EXTERNAL FUNCTIONS (ERC20 INTERFACE) ****************************/
@@ -212,7 +126,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Total supply of tokens currently in circulation.
    */
   function totalSupply() external override view returns (uint256) {
-    return _totalSupply;
+    return _ERC1400Store().totalSupply;
   }
   /**
    * @dev Get the balance of the account with address 'tokenHolder'.
@@ -220,7 +134,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Amount of token held by 'tokenHolder' in the token contract.
    */
   function balanceOf(address tokenHolder) external override view returns (uint256) {
-    return _balances[tokenHolder];
+    return _ERC1400Store().balances[tokenHolder];
   }
   /**
    * @dev Transfer token for a specified address.
@@ -239,7 +153,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return A uint256 specifying the value of tokens still available for the spender.
    */
   function allowance(address owner, address spender) external override view returns (uint256) {
-    return _allowed[owner][spender];
+    return _ERC1400Store().allowed[owner][spender];
   }
   /**
    * @dev Approve the passed address to spend the specified amount of tokens on behalf of 'msg.sender'.
@@ -249,7 +163,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function approve(address spender, uint256 value) external override returns (bool) {
     require(spender != address(0), "56"); // 0x56	invalid sender
-    _allowed[msg.sender][spender] = value;
+    _ERC1400Store().allowed[msg.sender][spender] = value;
     emit Approval(msg.sender, spender, value);
     return true;
   }
@@ -261,13 +175,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return A boolean that indicates if the operation was successful.
    */
   function transferFrom(address from, address to, uint256 value) external override returns (bool) {
+    ERC1400Store storage $ = _ERC1400Store();
     require( _isOperator(msg.sender, from)
-      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
+      || (value <= $.allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
-    if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] -= value;
+    if($.allowed[from][msg.sender] >= value) {
+      $.allowed[from][msg.sender] -= value;
     } else {
-      _allowed[from][msg.sender] = 0;
+      $.allowed[from][msg.sender] = 0;
     }
 
     _transferByDefaultPartitions(msg.sender, from, to, value, "");
@@ -287,11 +202,12 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Requested document + document hash + document timestamp.
    */
   function getDocument(bytes32 documentName) external override view returns (string memory, bytes32, uint256) {
-    require(bytes(_documents[documentName].docURI).length != 0); // Action Blocked - Empty document
+    ERC1400Store storage $ = _ERC1400Store();
+    require(bytes($.documents[documentName].docURI).length != 0); // Action Blocked - Empty document
     return (
-      _documents[documentName].docURI,
-      _documents[documentName].docHash,
-      _documents[documentName].timestamp
+      $.documents[documentName].docURI,
+      $.documents[documentName].docHash,
+      $.documents[documentName].timestamp
     );
   }
   /**
@@ -301,46 +217,48 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param documentHash Hash of the document [optional parameter].
    */
   function setDocument(bytes32 documentName, string calldata uri, bytes32 documentHash) external override {
-    require(_isController[msg.sender]);
-    _documents[documentName] = Doc({
+    ERC1400Store storage $ = _ERC1400Store();
+    require($.isController[msg.sender]);
+    $.documents[documentName] = Doc({
       docURI: uri,
       docHash: documentHash,
       timestamp: block.timestamp
     });
 
-    if (_indexOfDocHashes[documentHash] == 0) {
-      _docHashes.push(documentHash);
-      _indexOfDocHashes[documentHash] = _docHashes.length;
+    if ($.indexOfDocHashes[documentHash] == 0) {
+      $.docHashes.push(documentHash);
+      $.indexOfDocHashes[documentHash] = $.docHashes.length;
     }
 
     emit DocumentUpdated(documentName, uri, documentHash);
   }
 
   function removeDocument(bytes32 documentName) external override {
-    require(_isController[msg.sender], "Unauthorized");
-    require(bytes(_documents[documentName].docURI).length != 0, "Document doesnt exist"); // Action Blocked - Empty document
+    ERC1400Store storage $ = _ERC1400Store();
+    require($.isController[msg.sender], "Unauthorized");
+    require(bytes($.documents[documentName].docURI).length != 0, "Document doesnt exist"); // Action Blocked - Empty document
 
-    Doc memory data = _documents[documentName];
+    Doc memory data = $.documents[documentName];
 
-    uint256 index1 = _indexOfDocHashes[data.docHash];
+    uint256 index1 = $.indexOfDocHashes[data.docHash];
     require(index1 > 0, "Invalid index"); //Indexing starts at 1, 0 is not allowed
 
     // move the last item into the index being vacated
-    bytes32 lastValue = _docHashes[_docHashes.length - 1];
-    _docHashes[index1 - 1] = lastValue; // adjust for 1-based indexing
-    _indexOfDocHashes[lastValue] = index1;
+    bytes32 lastValue = $.docHashes[$.docHashes.length - 1];
+    $.docHashes[index1 - 1] = lastValue; // adjust for 1-based indexing
+    $.indexOfDocHashes[lastValue] = index1;
 
     //_totalPartitions.length -= 1;
-    _docHashes.pop();
-    _indexOfDocHashes[data.docHash] = 0;
+    $.docHashes.pop();
+    $.indexOfDocHashes[data.docHash] = 0;
 
-    delete _documents[documentName];
+    delete $.documents[documentName];
 
     emit DocumentRemoved(documentName, data.docURI, data.docHash);
   }
 
   function getAllDocuments() external override view returns (bytes32[] memory) {
-    return _docHashes;
+    return _ERC1400Store().docHashes;
   }
   /************************************************************************************************/
 
@@ -353,7 +271,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Amount of token of partition 'partition' held by 'tokenHolder' in the token contract.
    */
   function balanceOfByPartition(bytes32 partition, address tokenHolder) external override view returns (uint256) {
-    return _balanceOfByPartition[tokenHolder][partition];
+    return _ERC1400Store().balanceOfByPartition[tokenHolder][partition];
   }
   /**
    * @dev Get partitions index of a tokenholder.
@@ -361,7 +279,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Array of partitions index of 'tokenHolder'.
    */
   function partitionsOf(address tokenHolder) external override view returns (bytes32[] memory) {
-    return _partitionsOf[tokenHolder];
+    return _ERC1400Store().partitionsOf[tokenHolder];
   }
   /************************************************************************************************/
 
@@ -384,13 +302,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param data Information attached to the transfer, and intended for the token holder ('from').
    */
   function transferFromWithData(address from, address to, uint256 value, bytes calldata data) external override virtual {
+    ERC1400Store storage $ = _ERC1400Store();
     require( _isOperator(msg.sender, from)
-      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
+      || (value <= $.allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
-    if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] -= value;
+    if($.allowed[from][msg.sender] >= value) {
+      $.allowed[from][msg.sender] -= value;
     } else {
-      _allowed[from][msg.sender] = 0;
+      $.allowed[from][msg.sender] = 0;
     }
 
     _transferByDefaultPartitions(msg.sender, from, to, value, data);
@@ -442,17 +361,18 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     override
     returns (bytes32)
   {
+    ERC1400Store storage $ = _ERC1400Store();
     //We want to check if the msg.sender is an authorized operator for `from`
     //(msg.sender == from OR msg.sender is authorized by from OR msg.sender is a controller if this token is controlable)
     //OR
     //We want to check if msg.sender is an `allowed` operator/spender for `from`
     require(_isOperatorForPartition(partition, msg.sender, from)
-      || (value <= _allowedByPartition[partition][from][msg.sender]), "53"); // 0x53	insufficient allowance
+      || (value <= $.allowedByPartition[partition][from][msg.sender]), "53"); // 0x53	insufficient allowance
 
-    if(_allowedByPartition[partition][from][msg.sender] >= value) {
-      _allowedByPartition[partition][from][msg.sender] -= value;
+    if($.allowedByPartition[partition][from][msg.sender] >= value) {
+      $.allowedByPartition[partition][from][msg.sender] -= value;
     } else {
-      _allowedByPartition[partition][from][msg.sender] = 0;
+      $.allowedByPartition[partition][from][msg.sender] = 0;
     }
 
     return _transferByPartition(partition, msg.sender, from, to, value, data, operatorData);
@@ -467,7 +387,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return bool 'true' if the token can still be controlled by operators, 'false' if it can't anymore.
    */
   function isControllable() external override view returns (bool) {
-    return _isControllable;
+    return _ERC1400Store().isControllable;
   }
   /************************************************************************************************/
 
@@ -480,7 +400,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function authorizeOperator(address operator) external override {
     require(operator != msg.sender);
-    _authorizedOperator[operator][msg.sender] = true;
+    _ERC1400Store().authorizedOperator[operator][msg.sender] = true;
     emit AuthorizedOperator(operator, msg.sender);
   }
   /**
@@ -490,7 +410,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function revokeOperator(address operator) external override {
     require(operator != msg.sender);
-    _authorizedOperator[operator][msg.sender] = false;
+    _ERC1400Store().authorizedOperator[operator][msg.sender] = false;
     emit RevokedOperator(operator, msg.sender);
   }
   /**
@@ -499,7 +419,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param operator Address to set as an operator for 'msg.sender'.
    */
   function authorizeOperatorByPartition(bytes32 partition, address operator) external override {
-    _authorizedOperatorByPartition[msg.sender][partition][operator] = true;
+    _ERC1400Store().authorizedOperatorByPartition[msg.sender][partition][operator] = true;
     emit AuthorizedOperatorByPartition(partition, operator, msg.sender);
   }
   /**
@@ -509,7 +429,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param operator Address to rescind as an operator on given partition for 'msg.sender'.
    */
   function revokeOperatorByPartition(bytes32 partition, address operator) external override {
-    _authorizedOperatorByPartition[msg.sender][partition][operator] = false;
+    _ERC1400Store().authorizedOperatorByPartition[msg.sender][partition][operator] = false;
     emit RevokedOperatorByPartition(partition, operator, msg.sender);
   }
   /************************************************************************************************/
@@ -545,7 +465,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return bool 'true' if tokens can still be issued by the issuer, 'false' if they can't anymore.
    */
   function isIssuable() external override view returns (bool) {
-    return _isIssuable;
+    return _ERC1400Store().isIssuable;
   }
   /**
    * @dev Issue tokens from default partition.
@@ -559,9 +479,9 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     onlyMinter
     isIssuableToken
   {
-    require(_defaultPartitions.length != 0, "55"); // 0x55	funds locked (lockup period)
+    require(_ERC1400Store().defaultPartitions.length != 0, "55"); // 0x55	funds locked (lockup period)
 
-    _issueByPartition(_defaultPartitions[0], msg.sender, tokenHolder, value, data);
+    _issueByPartition(_ERC1400Store().defaultPartitions[0], msg.sender, tokenHolder, value, data);
   }
   /**
    * @dev Issue tokens from a specific partition.
@@ -604,13 +524,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     override
     virtual
   {
+    ERC1400Store storage $ = _ERC1400Store();
     require(_isOperator(msg.sender, from)
-      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
+      || (value <= $.allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
 
-    if(_allowed[from][msg.sender] >= value) {
-      _allowed[from][msg.sender] -= value;
+    if($.allowed[from][msg.sender] >= value) {
+      $.allowed[from][msg.sender] -= value;
     } else {
-      _allowed[from][msg.sender] = 0;
+      $.allowed[from][msg.sender] = 0;
     }
 
     _redeemByDefaultPartitions(msg.sender, from, value, data);
@@ -638,12 +559,13 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     external
     override
   {
-    require(_isOperatorForPartition(partition, msg.sender, tokenHolder) || value <= _allowedByPartition[partition][tokenHolder][msg.sender], "58"); // 0x58	invalid operator (transfer agent)
+    ERC1400Store storage $ = _ERC1400Store();
+    require(_isOperatorForPartition(partition, msg.sender, tokenHolder) || value <= $.allowedByPartition[partition][tokenHolder][msg.sender], "58"); // 0x58	invalid operator (transfer agent)
 
-    if(_allowedByPartition[partition][tokenHolder][msg.sender] >= value) {
-      _allowedByPartition[partition][tokenHolder][msg.sender] -= value;
+    if($.allowedByPartition[partition][tokenHolder][msg.sender] >= value) {
+      $.allowedByPartition[partition][tokenHolder][msg.sender] -= value;
     } else {
-      _allowedByPartition[partition][tokenHolder][msg.sender] = 0;
+      $.allowedByPartition[partition][tokenHolder][msg.sender] = 0;
     }
 
     _redeemByPartition(partition, msg.sender, tokenHolder, value, "", operatorData);
@@ -662,14 +584,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Name of the token.
    */
   function name() external view returns(string memory) {
-    return _name;
+    return _ERC1400Store().name;
   }
   /**
    * @dev Get the symbol of the token, e.g., "MYT".
    * @return Symbol of the token.
    */
   function symbol() external view returns(string memory) {
-    return _symbol;
+    return _ERC1400Store().symbol;
   }
   /**
    * @dev Get the number of decimals of the token.
@@ -683,14 +605,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return The smallest non-divisible part of the token.
    */
   function granularity() external view returns(uint256) {
-    return _granularity;
+    return _ERC1400Store().granularity;
   }
   /**
    * @dev Get list of existing partitions.
    * @return Array of all exisiting partitions.
    */
   function totalPartitions() external view returns (bytes32[] memory) {
-    return _totalPartitions;
+    return _ERC1400Store().totalPartitions;
   }
   /**
    * @dev Get the total number of issued tokens for a given partition.
@@ -698,7 +620,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Total supply of tokens currently in circulation, for a given partition.
    */
   function totalSupplyByPartition(bytes32 partition) external view returns (uint256) {
-    return _totalSupplyByPartition[partition];
+    return _ERC1400Store().totalSupplyByPartition[partition];
   }
   /************************************************************************************************/
 
@@ -709,14 +631,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * Once set to false, '_isControllable' can never be set to 'true' again.
    */
   function renounceControl() external onlyOwner {
-    _isControllable = false;
+    _ERC1400Store().isControllable = false;
   }
   /**
    * @dev Definitely renounce the possibility to issue new tokens.
    * Once set to false, '_isIssuable' can never be set to 'true' again.
    */
   function renounceIssuance() external onlyOwner {
-    _isIssuable = false;
+    _ERC1400Store().isIssuable = false;
   }
   /************************************************************************************************/
 
@@ -727,7 +649,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return List of addresses of all the controllers.
    */
   function controllers() external view returns (address[] memory) {
-    return _controllers;
+    return _ERC1400Store().controllers;
   }
   /**
    * @dev Get controllers for a given partition.
@@ -735,7 +657,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Array of controllers for partition.
    */
   function controllersByPartition(bytes32 partition) external view returns (address[] memory) {
-    return _controllersByPartition[partition];
+    return _ERC1400Store().controllersByPartition[partition];
   }
   /**
    * @dev Set list of token controllers.
@@ -763,7 +685,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return Array of default partitions.
    */
   function getDefaultPartitions() external view returns (bytes32[] memory) {
-    return _defaultPartitions;
+    return _ERC1400Store().defaultPartitions;
   }
   /**
    * @dev Set default partitions to transfer from.
@@ -771,7 +693,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param partitions partitions to use by default when not specified.
    */
   function setDefaultPartitions(bytes32[] calldata partitions) external onlyOwner {
-    _defaultPartitions = partitions;
+    _ERC1400Store().defaultPartitions = partitions;
   }
   /************************************************************************************************/
 
@@ -785,7 +707,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return A uint256 specifying the value of tokens still available for the spender.
    */
   function allowanceByPartition(bytes32 partition, address owner, address spender) external override view returns (uint256) {
-    return _allowedByPartition[partition][owner][spender];
+    return _ERC1400Store().allowedByPartition[partition][owner][spender];
   }
   /**
    * @dev Approve the passed address to spend the specified amount of tokens on behalf of 'msg.sender'.
@@ -796,7 +718,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function approveByPartition(bytes32 partition, address spender, uint256 value) external returns (bool) {
     require(spender != address(0), "56"); // 0x56	invalid sender
-    _allowedByPartition[partition][msg.sender][spender] = value;
+    _ERC1400Store().allowedByPartition[partition][msg.sender][spender] = value;
     emit ApprovalByPartition(partition, msg.sender, spender, value);
     return true;
   }
@@ -859,12 +781,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     internal
     isNotMigratedToken
   {
+    ERC1400Store storage $ = _ERC1400Store();
+
     require(_isMultiple(value), "50"); // 0x50	transfer failure
     require(to != address(0), "57"); // 0x57	invalid receiver
-    require(_balances[from] >= value, "52"); // 0x52	insufficient balance
+    require($.balances[from] >= value, "52"); // 0x52	insufficient balance
 
-    _balances[from] -= value;
-    _balances[to] += value;
+    $.balances[from] -= value;
+    $.balances[to] += value;
 
     emit Transfer(from, to, value); // ERC20 retrocompatibility
   }
@@ -891,7 +815,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     internal
     returns (bytes32)
   {
-    require(_balanceOfByPartition[from][fromPartition] >= value, "52"); // 0x52	insufficient balance
+    require(_ERC1400Store().balanceOfByPartition[from][fromPartition] >= value, "52"); // 0x52	insufficient balance
 
     bytes32 toPartition = fromPartition;
 
@@ -934,19 +858,21 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   )
     internal
   {
-    require(_defaultPartitions.length != 0, "55"); // // 0x55	funds locked (lockup period)
+    ERC1400Store storage $ = _ERC1400Store();
+
+    require($.defaultPartitions.length != 0, "55"); // // 0x55	funds locked (lockup period)
 
     uint256 _remainingValue = value;
     uint256 _localBalance;
 
-    for (uint i = 0; i < _defaultPartitions.length; i++) {
-      _localBalance = _balanceOfByPartition[from][_defaultPartitions[i]];
+    for (uint i = 0; i < $.defaultPartitions.length; i++) {
+      _localBalance = $.balanceOfByPartition[from][$.defaultPartitions[i]];
       if(_remainingValue <= _localBalance) {
-        _transferByPartition(_defaultPartitions[i], operator, from, to, _remainingValue, data, "");
+        _transferByPartition($.defaultPartitions[i], operator, from, to, _remainingValue, data, "");
         _remainingValue = 0;
         break;
       } else if (_localBalance != 0) {
-        _transferByPartition(_defaultPartitions[i], operator, from, to, _localBalance, data, "");
+        _transferByPartition($.defaultPartitions[i], operator, from, to, _localBalance, data, "");
         _remainingValue = _remainingValue - _localBalance;
       }
     }
@@ -984,37 +910,39 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param value Number of tokens to transfer.
    */
   function _removeTokenFromPartition(address from, bytes32 partition, uint256 value) internal {
-    _balanceOfByPartition[from][partition] -= value;
-    _totalSupplyByPartition[partition] -= value;
+    ERC1400Store storage $ = _ERC1400Store();
+
+    $.balanceOfByPartition[from][partition] -= value;
+    $.totalSupplyByPartition[partition] -= value;
 
     // If the total supply is zero, finds and deletes the partition.
-    if(_totalSupplyByPartition[partition] == 0) {
-      uint256 index1 = _indexOfTotalPartitions[partition];
+    if($.totalSupplyByPartition[partition] == 0) {
+      uint256 index1 = $.indexOfTotalPartitions[partition];
       require(index1 > 0, "50"); // 0x50	transfer failure
 
       // move the last item into the index being vacated
-      bytes32 lastValue = _totalPartitions[_totalPartitions.length - 1];
-      _totalPartitions[index1 - 1] = lastValue; // adjust for 1-based indexing
-      _indexOfTotalPartitions[lastValue] = index1;
+      bytes32 lastValue = $.totalPartitions[$.totalPartitions.length - 1];
+      $.totalPartitions[index1 - 1] = lastValue; // adjust for 1-based indexing
+      $.indexOfTotalPartitions[lastValue] = index1;
 
       //_totalPartitions.length -= 1;
-      _totalPartitions.pop();
-      _indexOfTotalPartitions[partition] = 0;
+      $.totalPartitions.pop();
+      $.indexOfTotalPartitions[partition] = 0;
     }
 
     // If the balance of the TokenHolder's partition is zero, finds and deletes the partition.
-    if(_balanceOfByPartition[from][partition] == 0) {
-      uint256 index2 = _indexOfPartitionsOf[from][partition];
+    if($.balanceOfByPartition[from][partition] == 0) {
+      uint256 index2 = $.indexOfPartitionsOf[from][partition];
       require(index2 > 0, "50"); // 0x50	transfer failure
 
       // move the last item into the index being vacated
-      bytes32 lastValue = _partitionsOf[from][_partitionsOf[from].length - 1];
-      _partitionsOf[from][index2 - 1] = lastValue;  // adjust for 1-based indexing
-      _indexOfPartitionsOf[from][lastValue] = index2;
+      bytes32 lastValue = $.partitionsOf[from][$.partitionsOf[from].length - 1];
+      $.partitionsOf[from][index2 - 1] = lastValue;  // adjust for 1-based indexing
+      $.indexOfPartitionsOf[from][lastValue] = index2;
 
       //_partitionsOf[from].length -= 1;
-      _partitionsOf[from].pop();
-      _indexOfPartitionsOf[from][partition] = 0;
+      $.partitionsOf[from].pop();
+      $.indexOfPartitionsOf[from][partition] = 0;
     }
   }
   /**
@@ -1024,18 +952,20 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param value Number of tokens to transfer.
    */
   function _addTokenToPartition(address to, bytes32 partition, uint256 value) internal {
-    if(value != 0) {
-      if (_indexOfPartitionsOf[to][partition] == 0) {
-        _partitionsOf[to].push(partition);
-        _indexOfPartitionsOf[to][partition] = _partitionsOf[to].length;
-      }
-      _balanceOfByPartition[to][partition] += value;
+    ERC1400Store storage $ = _ERC1400Store();
 
-      if (_indexOfTotalPartitions[partition] == 0) {
-        _totalPartitions.push(partition);
-        _indexOfTotalPartitions[partition] = _totalPartitions.length;
+    if(value != 0) {
+      if ($.indexOfPartitionsOf[to][partition] == 0) {
+        $.partitionsOf[to].push(partition);
+        $.indexOfPartitionsOf[to][partition] = $.partitionsOf[to].length;
       }
-      _totalSupplyByPartition[partition] += value;
+      $.balanceOfByPartition[to][partition] += value;
+
+      if ($.indexOfTotalPartitions[partition] == 0) {
+        $.totalPartitions.push(partition);
+        $.indexOfTotalPartitions[partition] = $.totalPartitions.length;
+      }
+      $.totalSupplyByPartition[partition] += value;
     }
   }
   /**
@@ -1044,7 +974,8 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return 'true' if 'value' is a multiple of the granularity.
    */
   function _isMultiple(uint256 value) internal view returns(bool) {
-    return (value / _granularity) * _granularity == value;
+    ERC1400Store storage $ = _ERC1400Store();
+    return (value / $.granularity) * $.granularity == value;
   }
   /************************************************************************************************/
 
@@ -1144,9 +1075,10 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return 'true' if 'operator' is an operator of 'tokenHolder' and 'false' otherwise.
    */
   function _isOperator(address operator, address tokenHolder) internal view returns (bool) {
+    ERC1400Store storage $ = _ERC1400Store();
     return (operator == tokenHolder
-      || _authorizedOperator[operator][tokenHolder]
-      || (_isControllable && _isController[operator])
+      || $.authorizedOperator[operator][tokenHolder]
+      || ($.isControllable && $.isController[operator])
     );
   }
   /**
@@ -1158,9 +1090,10 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @return 'true' if 'operator' is an operator of 'tokenHolder' for partition 'partition' and 'false' otherwise.
    */
    function _isOperatorForPartition(bytes32 partition, address operator, address tokenHolder) internal view returns (bool) {
+     ERC1400Store storage $ = _ERC1400Store();
      return (_isOperator(operator, tokenHolder)
-       || _authorizedOperatorByPartition[tokenHolder][partition][operator]
-       || (_isControllable && _isControllerByPartition[partition][operator])
+       || $.authorizedOperatorByPartition[tokenHolder][partition][operator]
+       || ($.isControllable && $.isControllerByPartition[partition][operator])
      );
    }
   /************************************************************************************************/
@@ -1181,8 +1114,10 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     require(_isMultiple(value), "50"); // 0x50	transfer failure
     require(to != address(0), "57"); // 0x57	invalid receiver
 
-    _totalSupply += value;
-    _balances[to] += value;
+    ERC1400Store storage $ = _ERC1400Store();
+
+    $.totalSupply += value;
+    $.balances[to] += value;
 
     emit Issued(operator, to, value, data);
     emit Transfer(address(0), to, value); // ERC20 retrocompatibility
@@ -1228,12 +1163,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     internal
     isNotMigratedToken
   {
+    ERC1400Store storage $ = _ERC1400Store();
+
     require(_isMultiple(value), "50"); // 0x50	transfer failure
     require(from != address(0), "56"); // 0x56	invalid sender
-    require(_balances[from] >= value, "52"); // 0x52	insufficient balance
+    require($.balances[from] >= value, "52"); // 0x52	insufficient balance
 
-    _balances[from] -= value;
-    _totalSupply -= value;
+    $.balances[from] -= value;
+    $.totalSupply -= value;
 
     emit Redeemed(operator, from, value, data);
     emit Transfer(from, address(0), value);  // ERC20 retrocompatibility
@@ -1257,7 +1194,9 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   )
     internal
   {
-    require(_balanceOfByPartition[from][fromPartition] >= value, "52"); // 0x52	insufficient balance
+    ERC1400Store storage $ = _ERC1400Store();
+
+    require($.balanceOfByPartition[from][fromPartition] >= value, "52"); // 0x52	insufficient balance
 
     _callSenderExtension(fromPartition, operator, from, address(0), value, data, operatorData);
     _callTokenExtension(fromPartition, operator, from, address(0), value, data, operatorData);
@@ -1282,19 +1221,21 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   )
     internal
   {
-    require(_defaultPartitions.length != 0, "55"); // 0x55	funds locked (lockup period)
+    ERC1400Store storage $ = _ERC1400Store();
+
+    require($.defaultPartitions.length != 0, "55"); // 0x55	funds locked (lockup period)
 
     uint256 _remainingValue = value;
     uint256 _localBalance;
 
-    for (uint i = 0; i < _defaultPartitions.length; i++) {
-      _localBalance = _balanceOfByPartition[from][_defaultPartitions[i]];
+    for (uint i = 0; i < $.defaultPartitions.length; i++) {
+      _localBalance = $.balanceOfByPartition[from][$.defaultPartitions[i]];
       if(_remainingValue <= _localBalance) {
-        _redeemByPartition(_defaultPartitions[i], operator, from, _remainingValue, data, "");
+        _redeemByPartition($.defaultPartitions[i], operator, from, _remainingValue, data, "");
         _remainingValue = 0;
         break;
       } else {
-        _redeemByPartition(_defaultPartitions[i], operator, from, _localBalance, data, "");
+        _redeemByPartition($.defaultPartitions[i], operator, from, _localBalance, data, "");
         _remainingValue = _remainingValue - _localBalance;
       }
     }
@@ -1349,13 +1290,15 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param operators Controller addresses.
    */
   function _setControllers(address[] memory operators) internal {
-    for (uint i = 0; i<_controllers.length; i++){
-      _isController[_controllers[i]] = false;
+    ERC1400Store storage $ = _ERC1400Store();
+
+    for (uint i = 0; i<$.controllers.length; i++){
+      $.isController[$.controllers[i]] = false;
     }
     for (uint j = 0; j<operators.length; j++){
-      _isController[operators[j]] = true;
+      $.isController[operators[j]] = true;
     }
-    _controllers = operators;
+    $.controllers = operators;
   }
   /**
    * @dev Set list of token partition controllers.
@@ -1363,13 +1306,15 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    * @param operators Controller addresses.
    */
    function _setPartitionControllers(bytes32 partition, address[] memory operators) internal {
-     for (uint i = 0; i<_controllersByPartition[partition].length; i++){
-       _isControllerByPartition[partition][_controllersByPartition[partition][i]] = false;
+     ERC1400Store storage $ = _ERC1400Store();
+
+     for (uint i = 0; i<$.controllersByPartition[partition].length; i++){
+       $.isControllerByPartition[partition][$.controllersByPartition[partition][i]] = false;
      }
      for (uint j = 0; j<operators.length; j++){
-       _isControllerByPartition[partition][operators[j]] = true;
+       $.isControllerByPartition[partition][operators[j]] = true;
      }
-     _controllersByPartition[partition] = operators;
+     $.controllersByPartition[partition] = operators;
    }
   /************************************************************************************************/
 
@@ -1387,12 +1332,13 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function _setTokenExtension(address extension, string memory interfaceLabel, bool removeOldExtensionRoles, bool addMinterRoleForExtension, bool addControllerRoleForExtension) internal {
     address oldExtension = interfaceAddr(address(this), interfaceLabel);
+    ERC1400Store storage $ = _ERC1400Store();
 
     if (oldExtension != address(0) && removeOldExtensionRoles) {
       if(isMinter(oldExtension)) {
         _removeMinter(oldExtension);
       }
-      _isController[oldExtension] = false;
+      $.isController[oldExtension] = false;
     }
 
     ERC1820Client.setInterfaceImplementation(interfaceLabel, extension);
@@ -1400,7 +1346,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       _addMinter(extension);
     }
     if (addControllerRoleForExtension) {
-      _isController[extension] = true;
+      $.isController[extension] = true;
     }
   }
   /************************************************************************************************/
@@ -1424,14 +1370,14 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     ERC1820Client.setInterfaceImplementation(ERC20_INTERFACE_NAME, newContractAddress);
     ERC1820Client.setInterfaceImplementation(ERC1400_INTERFACE_NAME, newContractAddress);
     if(definitive) {
-      _migrated = true;
+      _ERC1400Store().migrated = true;
     }
   }
   /************************************************************************************************/
 
   /************************************* Domain Aware ******************************************/
   function domainName() public override view returns (string memory) {
-    return _name;
+    return _ERC1400Store().name;
   }
 
   function domainVersion() public override pure returns (string memory) {

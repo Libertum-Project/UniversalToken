@@ -7,9 +7,9 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 
 import "../interface/ERC1820Implementer.sol";
-import "../roles/MinterRole.sol";
+import "../roles/MinterRoleUpgradeable.sol";
 
-contract ERC20Token is Ownable, ERC20Burnable, ERC20Pausable, ERC1820Implementer, MinterRole {
+contract ERC20Token is Ownable, ERC20Burnable, ERC20Pausable, ERC1820Implementer, MinterRoleUpgradeable {
   string constant internal ERC20_TOKEN = "ERC20Token";
   uint8 immutable internal _decimals;
 

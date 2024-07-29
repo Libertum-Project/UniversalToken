@@ -15,7 +15,7 @@ import "../../roles/BlocklistedRole.sol";
 
 import "../../interface/IHoldableERC1400TokenExtension.sol";
 import "../../tools/ERC1820Client.sol";
-import "../../tools/DomainAware.sol";
+import "../../tools/DomainAwareUpgradeable.sol";
 import "../../interface/ERC1820Implementer.sol";
 
 import "../../IERC1400.sol";
@@ -1349,7 +1349,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       );
       bytes32 hash = keccak256(
         abi.encodePacked(
-          DomainAware(token).generateDomainSeparator(),
+          DomainAwareUpgradeable(token).generateDomainSeparator(),
           keccak256(pack)
         )
       );
@@ -1442,7 +1442,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
 
       bytes32 hash = keccak256(
         abi.encodePacked(
-          DomainAware(token).generateDomainSeparator(),
+          DomainAwareUpgradeable(token).generateDomainSeparator(),
           keccak256(pack)
         )
       );

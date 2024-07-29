@@ -42,7 +42,7 @@ contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
    * @param extension Address of token extension.
    * @param newOwner Address whom contract ownership shall be transferred to.
    */
-  constructor(
+  function __ERC1400HoldableToken_init(
     string memory name,
     string memory symbol,
     uint256 granularity,
@@ -50,9 +50,10 @@ contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
     bytes32[] memory defaultPartitions,
     address extension,
     address newOwner
-  )
-    ERC1400(name, symbol, granularity, controllers, defaultPartitions, newOwner)
+  ) internal
   {
+    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, newOwner);
+
     if(extension != address(0)) {
       Extension(extension).registerTokenSetup(
         address(this), // token
@@ -67,5 +68,4 @@ contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
       _setTokenExtension(extension, ERC1400_TOKENS_VALIDATOR, true, true, true);
     }
   }
-
 }
