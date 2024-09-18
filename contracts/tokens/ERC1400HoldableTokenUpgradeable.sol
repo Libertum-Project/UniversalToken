@@ -49,10 +49,10 @@ contract ERC1400HoldableTokenUpgradeable is ERC1400Upgradeable, IExtensionTypes 
     address[] memory controllers,
     bytes32[] memory defaultPartitions,
     address extension,
-    address newOwner
-  ) internal
-  {
-    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, newOwner);
+    address newOwner,
+    address minter
+  ) internal onlyInitializing {
+    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, newOwner, minter);
 
     if(extension != address(0)) {
       Extension(extension).registerTokenSetup(

@@ -5,7 +5,9 @@
  */
 pragma solidity ^0.8.0;
 
-abstract contract DomainAwareUpgradeable {
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+abstract contract DomainAwareUpgradeable is Initializable {
     /// @custom:storage-location erc7201:openzeppelin.storage.Ownable
     struct DomainAwareStorage {
         // Mapping of ChainID to domain separators. This is a very gas efficient way
@@ -23,7 +25,7 @@ abstract contract DomainAwareUpgradeable {
         }
     }
 
-    function __DomainAware_init() internal {
+    function __DomainAware_init() internal onlyInitializing {
         _updateDomainSeparator();
     }
 

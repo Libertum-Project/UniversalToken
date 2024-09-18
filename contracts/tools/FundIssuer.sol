@@ -911,7 +911,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
    * @return Returns 'true' if sender is a token controller.
    */
   function _tokenController(address sender, address assetAddress) internal view returns(bool) {
-    if(sender == Ownable(assetAddress).owner() ||
+    if(sender == OwnableUpgradeable(assetAddress).owner() ||
       _isTokenController[assetAddress][sender]) {
       return true;
     } else {
@@ -1117,7 +1117,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
    * @return 'true' if the address is oracle of the given token.
    */
   function _checkPriceOracle(address tokenAddress, address oracle) internal view returns(bool) {
-    return(_isPriceOracle[tokenAddress][oracle] || oracle == Ownable(tokenAddress).owner());
+    return(_isPriceOracle[tokenAddress][oracle] || oracle == OwnableUpgradeable(tokenAddress).owner());
   }
 
   /**************************** VIEW FUNCTIONS *******************************/

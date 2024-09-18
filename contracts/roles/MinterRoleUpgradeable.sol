@@ -6,12 +6,13 @@
 pragma solidity ^0.8.0;
 
 import "./Roles.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 /**
  * @title MinterRole
  * @dev Minters are responsible for minting new tokens.
  */
-abstract contract MinterRoleUpgradeable {
+abstract contract MinterRoleUpgradeable is Initializable {
     /// @custom:storage-location erc7201:openzeppelin.storage.Ownable
     struct MinterRoleStorage {
         Roles.Role minters;
@@ -30,8 +31,8 @@ abstract contract MinterRoleUpgradeable {
     event MinterAdded(address indexed account);
     event MinterRemoved(address indexed account);
 
-    function __MinterRole_init() internal {
-        _addMinter(msg.sender);
+    function __MinterRole_init(address minter) internal onlyInitializing {
+        _addMinter(minter);
     }
 
     modifier onlyMinter() virtual {

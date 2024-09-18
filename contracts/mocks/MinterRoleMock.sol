@@ -8,6 +8,6 @@ import "../roles/MinterRoleUpgradeable.sol";
 
 contract MinterMock is MinterRoleUpgradeable {
 
-  constructor() MinterRole() {}
+  constructor() MinterRoleUpgradeable() {}
 
 }

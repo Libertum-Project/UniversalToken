@@ -56,9 +56,10 @@ contract ERC1400Upgradeable is IERC20, IERC1400, ERC1400Storage, OwnableUpgradea
     uint256 tokenGranularity,
     address[] memory initialControllers,
     bytes32[] memory defaultPartitions,
-    address owner
-  ) internal {
-    __MinterRole_init();
+    address owner,
+    address minter
+  ) internal onlyInitializing {
+    __MinterRole_init(minter);
     __DomainAware_init();
     __Ownable_init(owner);
 

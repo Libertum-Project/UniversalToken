@@ -25,20 +25,20 @@ abstract contract ExtensionMock {
   ) external virtual;
 }
 
-contract FakeERC1400Mock is ERC1400Upgradeable {
+contract FakeERC1400MockUpgradeable is ERC1400Upgradeable {
 
-  constructor(
+  function __FakeERC1400Mock_init(
     string memory name,
     string memory symbol,
     uint256 granularity,
     address[] memory controllers,
     bytes32[] memory defaultPartitions,
     address owner,
+    address minter,
     address extension,
     address mockAddress
-  )
-    ERC1400(name, symbol, granularity, controllers, defaultPartitions, owner)
-  {
+  ) internal onlyInitializing {
+    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, owner, minter);
     if(extension != address(0)) {
       ExtensionMock(extension).addCertificateSigner(address(this), mockAddress);
       ExtensionMock(extension).addAllowlistAdmin(address(this), mockAddress);
