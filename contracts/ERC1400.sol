@@ -1356,6 +1356,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       _isController[operators[j]] = true;
     }
     _controllers = operators;
+    emit ControllersUpdated(operators);
   }
   /**
    * @dev Set list of token partition controllers.
