@@ -7,13 +7,13 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 
 import "../interface/ERC1820Implementer.sol";
-import "../roles/MinterRole.sol";
+import "../roles/MinterRoleUpgradeable.sol";
 
-contract ERC20Token is Ownable, ERC20Burnable, ERC20Pausable, ERC1820Implementer, MinterRole {
+contract ERC20Token is Ownable, ERC20Burnable, ERC20Pausable, ERC1820Implementer, MinterRoleUpgradeable {
   string constant internal ERC20_TOKEN = "ERC20Token";
   uint8 immutable internal _decimals;
 
-  constructor(string memory name, string memory symbol, uint8 __decimals) ERC20(name, symbol) {
+  constructor(string memory name, string memory symbol, uint8 __decimals, address owner) ERC20(name, symbol) Ownable(owner) {
     ERC1820Implementer._setInterface(ERC20_TOKEN);
     _decimals = __decimals;
   }
@@ -45,13 +45,9 @@ contract ERC20Token is Ownable, ERC20Burnable, ERC20Pausable, ERC1820Implementer
       _mint(to, value);
       return true;
   }
-  
-  function _beforeTokenTransfer(
-      address from,
-      address to,
-      uint256 amount
-  ) internal override(ERC20Pausable, ERC20) {
-    ERC20Pausable._beforeTokenTransfer(from, to, amount);
+
+  function _update(address from, address to, uint256 value) internal virtual override(ERC20Pausable, ERC20) {
+      ERC20Pausable._update(from, to, value);
   }
 
   /************************************* Domain Aware ******************************************/

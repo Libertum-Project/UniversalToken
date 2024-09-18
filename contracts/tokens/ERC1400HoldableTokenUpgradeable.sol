@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import "../ERC1400.sol";
+import "../ERC1400Upgradeable.sol";
 
 /**
  * @notice Interface to the extension types
@@ -29,7 +29,7 @@ abstract contract Extension is IExtensionTypes {
   ) external virtual;
 }
 
-contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
+contract ERC1400HoldableTokenUpgradeable is ERC1400Upgradeable, IExtensionTypes {
 
   /**
    * @dev Initialize ERC1400 + setup the token extension.
@@ -42,17 +42,18 @@ contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
    * @param extension Address of token extension.
    * @param newOwner Address whom contract ownership shall be transferred to.
    */
-  constructor(
+  function __ERC1400HoldableToken_init(
     string memory name,
     string memory symbol,
     uint256 granularity,
     address[] memory controllers,
     bytes32[] memory defaultPartitions,
     address extension,
-    address newOwner
-  )
-    ERC1400(name, symbol, granularity, controllers, defaultPartitions)
-  {
+    address newOwner,
+    address minter
+  ) internal onlyInitializing {
+    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, newOwner, minter);
+
     if(extension != address(0)) {
       Extension(extension).registerTokenSetup(
         address(this), // token
@@ -66,10 +67,5 @@ contract ERC1400HoldableToken is ERC1400, IExtensionTypes {
 
       _setTokenExtension(extension, ERC1400_TOKENS_VALIDATOR, true, true, true);
     }
-
-    if(newOwner != address(0)) {
-      transferOwnership(newOwner);
-    }
   }
-
 }

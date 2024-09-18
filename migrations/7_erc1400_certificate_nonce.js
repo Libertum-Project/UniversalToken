@@ -19,14 +19,14 @@ const CERTIFICATE_VALIDATION_SALT = 2;
 
 module.exports = async function (deployer, network, accounts) {
   if (network == "test") return; // test maintains own contracts
-  
+
   const extension = await Extension.deployed();
 
   await deployer.deploy(ERC1400HoldableCertificateToken, 'ERC1400HoldableCertificateNonceToken', 'DAU', 1, [controller], partitions, extension.address, controller, CERTIFICATE_SIGNER, CERTIFICATE_VALIDATION_NONCE);
   const tokenInstance = await ERC1400HoldableCertificateToken.deployed();
   console.log('\n   > ERC1400HoldableCertificateNonceToken token deployment with automated extension setup: Success -->', tokenInstance.address);
 
-  await deployer.deploy(ERC1400HoldableCertificateToken, 'ERC1400HoldableCertificateNonceToken', 'DAU', 1, [controller], partitions, ZERO_ADDRESS, ZERO_ADDRESS, CERTIFICATE_SIGNER, CERTIFICATE_VALIDATION_NONE);
+  await deployer.deploy(ERC1400HoldableCertificateToken, 'ERC1400HoldableCertificateNonceToken', 'DAU', 1, [controller], partitions, ZERO_ADDRESS, accounts[0], CERTIFICATE_SIGNER, CERTIFICATE_VALIDATION_NONE);
   const tokenInstance2 = await ERC1400HoldableCertificateToken.deployed();
   console.log('\n   > ERC1400HoldableCertificateNonceToken token deployment with manual extension setup: Success -->', tokenInstance2.address);
 

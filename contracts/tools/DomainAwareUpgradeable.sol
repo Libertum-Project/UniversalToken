@@ -5,14 +5,27 @@
  */
 pragma solidity ^0.8.0;
 
-abstract contract DomainAware {
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-    // Mapping of ChainID to domain separators. This is a very gas efficient way
-    // to not recalculate the domain separator on every call, while still
-    // automatically detecting ChainID changes.
-    mapping(uint256 => bytes32) private domainSeparators;
+abstract contract DomainAwareUpgradeable is Initializable {
+    /// @custom:storage-location erc7201:openzeppelin.storage.Ownable
+    struct DomainAwareStorage {
+        // Mapping of ChainID to domain separators. This is a very gas efficient way
+        // to not recalculate the domain separator on every call, while still
+        // automatically detecting ChainID changes.
+        mapping(uint256 => bytes32) domainSeparators;
+    }
 
-    constructor() {
+    // keccak256(abi.encode(uint256(keccak256("UniversalToken.storage.DomainAware")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant DomainAwareStorageLocation = 0x9ee54c81aef0a0ff449515124789eb3a81a2f9e661b59f7d02a5e4f089f31900;
+
+    function _getDomainAwareStorage() private pure returns (DomainAwareStorage storage $) {
+        assembly {
+            $.slot := DomainAwareStorageLocation
+        }
+    }
+
+    function __DomainAware_init() internal onlyInitializing {
         _updateDomainSeparator();
     }
 
@@ -48,14 +61,14 @@ abstract contract DomainAware {
 
         bytes32 newDomainSeparator = generateDomainSeparator();
 
-        domainSeparators[chainID] = newDomainSeparator;
+        _getDomainAwareStorage().domainSeparators[chainID] = newDomainSeparator;
 
         return newDomainSeparator;
     }
 
     // Returns the domain separator, updating it if chainID changes
     function _domainSeparator() private returns (bytes32) {
-        bytes32 currentDomainSeparator = domainSeparators[_chainID()];
+        bytes32 currentDomainSeparator = _getDomainAwareStorage().domainSeparators[_chainID()];
 
         if (currentDomainSeparator != 0x00) {
             return currentDomainSeparator;

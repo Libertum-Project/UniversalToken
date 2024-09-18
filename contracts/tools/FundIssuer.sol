@@ -5,7 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
@@ -13,7 +12,7 @@ import "./ERC1820Client.sol";
 import "../interface/ERC1820Implementer.sol";
 
 import "../extensions/userExtensions/IERC1400TokensRecipient.sol";
-import "../ERC1400.sol";
+import "../ERC1400Upgradeable.sol";
 
 /**
  ***************************************************************************************************************
@@ -36,7 +35,6 @@ import "../ERC1400.sol";
  *
  */
 contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implementer {
-  using SafeMath for uint256;
 
   bytes32 constant internal ORDER_SUBSCRIPTION_FLAG = 0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc;
   bytes32 constant internal ORDER_PAYMENT_FLAG = 0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd;
@@ -71,7 +69,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     address fundAddress;
     bool subscriptionsOpened;
   }
-  
+
   struct Cycle {
     address assetAddress;
     bytes32 assetClass;
@@ -222,7 +220,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
       Order storage order = _orders[orderIndex];
       require(from == order.investor, "Payment sender is not the subscriber");
 
-      _executePayment(orderIndex, erc1400TokenData, false);         
+      _executePayment(orderIndex, erc1400TokenData, false);
     }
   }
 
@@ -345,7 +343,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     Cycle storage lastCycle = _cycles[lastCycleIndex];
     uint256 previousStartTime = (lastCycle.startTime != 0) ? lastCycle.startTime : rules.firstStartTime;
 
-    _cycleIndex = _cycleIndex.add(1);
+    _cycleIndex += 1;
 
     _cycles[_cycleIndex] = Cycle({
       assetAddress: assetAddress,
@@ -379,7 +377,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     if(previousStartTime >= block.timestamp) {
       return previousStartTime;
     } else {
-      return block.timestamp.sub((block.timestamp - previousStartTime).mod(subscriptionPeriod));
+      return block.timestamp - ((block.timestamp - previousStartTime) % subscriptionPeriod);
     }
   }
 
@@ -414,7 +412,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
       new bytes(0)
     );
   }
-  
+
   /**
    * @dev Subscribe for a given asset, by creating an order.
    * @param assetAddress Address of the token representing the asset.
@@ -511,7 +509,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     external
   {
     Order storage order = _orders[orderIndex];
-    
+
     require(
       order.state == OrderState.Subscribed ||
       order.state == OrderState.Paid ||
@@ -561,7 +559,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     require(assetValue == 0 || reverseAssetValue == 0, "Asset value can only be set in one direction");
 
     require(_checkPriceOracle(cycle.assetAddress, msg.sender), "Sender is not a price oracle.");
-    
+
     cycle.assetValue = assetValue;
     cycle.reverseAssetValue = reverseAssetValue;
   }
@@ -658,7 +656,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
         ERC20(cycle.paymentAddress).transferFrom(msg.sender, address(this), value);
         _escrowedErc20[cycle.assetAddress][cycle.paymentAddress] += value;
       } else if(cycle.paymentType == Payment.ERC1400 && erc1400TokenData.length == 0) {
-        ERC1400(cycle.paymentAddress).operatorTransferByPartition(cycle.paymentPartition, msg.sender, address(this), value, abi.encodePacked(BYPASS_ACTION_FLAG), abi.encodePacked(BYPASS_ACTION_FLAG));
+        ERC1400Upgradeable(cycle.paymentAddress).operatorTransferByPartition(cycle.paymentPartition, msg.sender, address(this), value, abi.encodePacked(BYPASS_ACTION_FLAG), abi.encodePacked(BYPASS_ACTION_FLAG));
         _escrowedErc1400[cycle.assetAddress][cycle.paymentAddress][cycle.paymentPartition] += value;
       } else if(cycle.paymentType == Payment.ERC1400 && erc1400TokenData.length != 0) {
         (address erc1400TokenAddress, bytes32 erc1400TokenPartition, uint256 erc1400PaymentValue) = abi.decode(erc1400TokenData, (address, bytes32, uint256));
@@ -695,18 +693,18 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     if(order.orderType == OrderType.Value) {
       value = order.value;
       if(cycle.assetValue != 0) {
-        amount = value.div(cycle.assetValue);
+        amount = value / cycle.assetValue;
       } else {
-        amount = value.mul(cycle.reverseAssetValue);
+        amount = value * cycle.reverseAssetValue;
       }
     }
-    
+
     if(order.orderType == OrderType.Amount) {
       amount = order.amount;
       if(cycle.assetValue != 0) {
-        value = amount.mul(cycle.assetValue);
+        value = amount * cycle.assetValue;
       } else {
-        value = amount.div(cycle.reverseAssetValue);
+        value = amount / cycle.reverseAssetValue;
       }
     }
 
@@ -731,7 +729,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
       ERC20(cycle.paymentAddress).transfer(recipient, order.value);
       _escrowedErc20[cycle.assetAddress][cycle.paymentAddress] -= order.value;
     } else if(cycle.paymentType == Payment.ERC1400) {
-      ERC1400(cycle.paymentAddress).transferByPartition(cycle.paymentPartition, recipient, order.value, abi.encodePacked(BYPASS_ACTION_FLAG));
+      ERC1400Upgradeable(cycle.paymentAddress).transferByPartition(cycle.paymentPartition, recipient, order.value, abi.encodePacked(BYPASS_ACTION_FLAG));
       _escrowedErc1400[cycle.assetAddress][cycle.paymentAddress][cycle.paymentPartition] -= order.value;
     }
   }
@@ -792,10 +790,10 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     _releasePayment(orderIndex, cycle.fundAddress);
 
     if(order.state == OrderState.Paid) {
-      ERC1400(cycle.assetAddress).issueByPartition(cycle.assetClass, order.investor, order.amount, "");
+      ERC1400Upgradeable(cycle.assetAddress).issueByPartition(cycle.assetClass, order.investor, order.amount, "");
       order.state = OrderState.PaidSettled;
     } else if (order.state == OrderState.Subscribed) {
-      ERC1400(cycle.assetAddress).issueByPartition(cycle.assetClass, address(this), order.amount, "");
+      ERC1400Upgradeable(cycle.assetAddress).issueByPartition(cycle.assetClass, address(this), order.amount, "");
       order.state = OrderState.UnpaidSettled;
     } else {
       revert("Impossible to settle an order that is neither in state Paid, nor Subscribed");
@@ -820,7 +818,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     if(!remainingOrdersToSettle) {
       cycle.finalized = true;
       if(totalUnpaidSettled != 0) {
-        ERC1400(cycle.assetAddress).transferByPartition(cycle.assetClass, cycle.fundAddress, totalUnpaidSettled, "");
+        ERC1400Upgradeable(cycle.assetAddress).transferByPartition(cycle.assetClass, cycle.fundAddress, totalUnpaidSettled, "");
       }
     } else {
       revert("Remaining orders to settle");
@@ -856,9 +854,9 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
       Order storage order = _orders[_cycleOrders[cycleIndex][i]];
 
       if(order.state == OrderState.PaidSettled) {
-        totalPaidSettled = totalPaidSettled.add(order.amount);
+        totalPaidSettled += order.amount;
       } else if(order.state == OrderState.UnpaidSettled) {
-        totalUnpaidSettled = totalUnpaidSettled.add(order.amount);
+        totalUnpaidSettled += order.amount;
       } else if(
         order.state != OrderState.Cancelled &&
         order.state != OrderState.Rejected
@@ -899,7 +897,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     } else if(block.timestamp < cycle.startTime + cycle.subscriptionPeriodLength + cycle.valuationPeriodLength + cycle.paymentPeriodLength) {
       return CycleState.Payment;
     } else if(!cycle.finalized){
-      return CycleState.Settlement; 
+      return CycleState.Settlement;
     } else {
       return CycleState.Finalized;
     }
@@ -913,7 +911,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
    * @return Returns 'true' if sender is a token controller.
    */
   function _tokenController(address sender, address assetAddress) internal view returns(bool) {
-    if(sender == Ownable(assetAddress).owner() ||
+    if(sender == OwnableUpgradeable(assetAddress).owner() ||
       _isTokenController[assetAddress][sender]) {
       return true;
     } else {
@@ -947,7 +945,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
     if(operatorData.length == 0) { // The reason for this check is to avoid a certificate gets interpreted as a flag by mistake
       return false;
     }
-    
+
     bytes32 flag = _getTransferFlag(data);
     if(data.length == 192 && flag == ORDER_SUBSCRIPTION_FLAG) {
       return true;
@@ -1119,7 +1117,7 @@ contract FundIssuer is ERC1820Client, IERC1400TokensRecipient, ERC1820Implemente
    * @return 'true' if the address is oracle of the given token.
    */
   function _checkPriceOracle(address tokenAddress, address oracle) internal view returns(bool) {
-    return(_isPriceOracle[tokenAddress][oracle] || oracle == Ownable(tokenAddress).owner());
+    return(_isPriceOracle[tokenAddress][oracle] || oracle == OwnableUpgradeable(tokenAddress).owner());
   }
 
   /**************************** VIEW FUNCTIONS *******************************/

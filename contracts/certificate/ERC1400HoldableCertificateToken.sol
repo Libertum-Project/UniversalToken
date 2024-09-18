@@ -5,7 +5,7 @@
  */
 pragma solidity ^0.8.0;
 
-import "../ERC1400.sol";
+import "../ERC1400Upgradeable.sol";
 
 /**
  * @notice Interface to the extension types
@@ -43,7 +43,7 @@ abstract contract Extension is IExtensionTypes {
  * @title ERC1400HoldableCertificateNonceToken
  * @dev Holdable ERC1400 with nonce-based certificate controller logic
  */
-contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
+contract ERC1400HoldableCertificateTokenUpgradeable is ERC1400Upgradeable, IExtensionTypes {
 
   /**
    * @dev Initialize ERC1400 + initialize certificate controller.
@@ -55,13 +55,14 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
    * not specified, like the case ERC20 tranfers.
    * @param extension Address of token extension.
    * @param newOwner Address whom contract ownership shall be transferred to.
+   * @param minter Address whom contract ownership shall be transferred to.
    * @param certificateSigner Address of the off-chain service which signs the
    * conditional ownership certificates required for token transfers, issuance,
    * redemption (Cf. CertificateController.sol).
    * @param certificateActivated If set to 'true', the certificate controller
    * is activated at contract creation.
    */
-  constructor(
+  function __ERC1400HoldableCertificateToken_init(
     string memory name,
     string memory symbol,
     uint256 granularity,
@@ -69,11 +70,12 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
     bytes32[] memory defaultPartitions,
     address extension,
     address newOwner,
+    address minter,
     address certificateSigner,
     CertificateValidation certificateActivated
-  )
-    ERC1400(name, symbol, granularity, controllers, defaultPartitions)
-  {
+  ) internal onlyInitializing {
+    __ERC1400_init(name, symbol, granularity, controllers, defaultPartitions, newOwner, minter);
+
     if(extension != address(0)) {
       Extension(extension).registerTokenSetup(
         address(this), // token
@@ -90,10 +92,6 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
       }
 
       _setTokenExtension(extension, ERC1400_TOKENS_VALIDATOR, true, true, true);
-    }
-
-    if(newOwner != address(0)) {
-      transferOwnership(newOwner);
     }
   }
 
@@ -115,7 +113,7 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
     view
     returns (bytes1, bytes32, bytes32)
   {
-    return ERC1400._canTransfer(
+    return ERC1400Upgradeable._canTransfer(
       _replaceFunctionSelector(this.transferByPartition.selector, msg.data), // 0xf3d490db: 4 first bytes of keccak256(transferByPartition(bytes32,address,uint256,bytes))
       partition,
       msg.sender,
@@ -145,7 +143,7 @@ contract ERC1400HoldableCertificateToken is ERC1400, IExtensionTypes {
     view
     returns (bytes1, bytes32, bytes32)
   {
-    return ERC1400._canTransfer(
+    return ERC1400Upgradeable._canTransfer(
       _replaceFunctionSelector(this.operatorTransferByPartition.selector, msg.data), // 0x8c0dee9c: 4 first bytes of keccak256(operatorTransferByPartition(bytes32,address,address,uint256,bytes,bytes))
       partition,
       msg.sender,

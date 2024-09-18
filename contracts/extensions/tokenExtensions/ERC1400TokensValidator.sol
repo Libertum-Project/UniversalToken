@@ -5,7 +5,6 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -16,7 +15,7 @@ import "../../roles/BlocklistedRole.sol";
 
 import "../../interface/IHoldableERC1400TokenExtension.sol";
 import "../../tools/ERC1820Client.sol";
-import "../../tools/DomainAware.sol";
+import "../../tools/DomainAwareUpgradeable.sol";
 import "../../interface/ERC1820Implementer.sol";
 
 import "../../IERC1400.sol";
@@ -32,7 +31,6 @@ interface IMinterRole {
 
 
 contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, CertificateSignerRole, AllowlistedRole, BlocklistedRole, ERC1820Client, ERC1820Implementer, IHoldableERC1400TokenExtension {
-  using SafeMath for uint256;
 
   string constant internal ERC1400_TOKENS_VALIDATOR = "ERC1400TokensValidator";
 
@@ -88,7 +86,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
 
   // Mapping from (token, partition) to partition granularity.
   mapping(address => mapping(bytes32 => uint256)) internal _granularityByPartition;
-  
+
   // Mapping from (token, holdId) to hold.
   mapping(address => mapping(bytes32 => Hold)) internal _holds;
 
@@ -122,7 +120,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
   event HoldRenewed(address indexed token, bytes32 holdId, address indexed notary, uint256 oldExpiration, uint256 newExpiration);
   event HoldExecuted(address indexed token, bytes32 holdId, address indexed notary, uint256 heldValue, uint256 transferredValue, bytes32 secret);
   event HoldExecutedAndKeptOpen(address indexed token, bytes32 holdId, address indexed notary, uint256 heldValue, uint256 transferredValue, bytes32 secret);
-  
+
   /**
    * @dev Modifier to verify if sender is a token controller.
    */
@@ -256,13 +254,13 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
   function canValidate(IERC1400TokensValidator.ValidateData calldata data) // Comments to avoid compilation warnings for unused variables.
     external
     override
-    view 
+    view
     returns(bool)
   {
     (bool canValidateToken,,) = _canValidateCertificateToken(data.token, data.payload, data.operator, data.operatorData.length != 0 ? data.operatorData : data.data);
 
     canValidateToken = canValidateToken && _canValidateAllowlistAndBlocklistToken(data.token, data.payload, data.from, data.to);
-    
+
     canValidateToken = canValidateToken && !paused(data.token);
 
     canValidateToken = canValidateToken && _canValidateGranularToken(data.token, data.partition, data.value);
@@ -307,17 +305,17 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     {
         require(_canValidateAllowlistAndBlocklistToken(msg.sender, payload, from, to), "54"); // 0x54	transfers halted (contract paused)
     }
-    
+
     {
         require(!paused(msg.sender), "54"); // 0x54	transfers halted (contract paused)
     }
-    
+
     {
         require(_canValidateGranularToken(msg.sender, partition, value), "50"); // 0x50	transfer failure
 
         require(_canValidateHoldableToken(msg.sender, partition, operator, from, to, value), "55"); // 0x55	funds locked (lockup period)
     }
-    
+
     {
         (, bytes32 holdId) = _retrieveHoldHashId(msg.sender, partition, operator, from, to, value);
         if (_holdsActivated[msg.sender] && holdId != "") {
@@ -367,7 +365,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
         } else {
           return (false, CertificateValidation.SaltBased, "");
         }
-        
+
       } else { // case when _certificateActivated[token] == CertificateValidation.NonceBased
         if(
           _checkNonceBasedCertificate(
@@ -422,7 +420,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
         }
       }
     }
-    
+
     return true;
   }
 
@@ -445,7 +443,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
         !_isMultiple(_granularityByPartition[token][partition], value)
       ) {
         return false;
-      } 
+      }
     }
 
     return true;
@@ -471,12 +469,12 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       if(operator != from) {
         (, bytes32 holdId) = _retrieveHoldHashId(token, partition, operator, from, to, value);
         Hold storage hold_ = _holds[token][holdId];
-        
+
         if (_holdCanBeExecutedAsNotary(hold_, operator, value) && value <= IERC1400(token).balanceOfByPartition(partition, from)) {
           return true;
         }
       }
-      
+
       if(value > _spendableBalanceOfByPartition(token, partition, from)) {
         return false;
       }
@@ -494,7 +492,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
   function granularityByPartition(address token, bytes32 partition) external view returns (uint256) {
     return _granularityByPartition[token][partition];
   }
-  
+
   /**
    * @dev Set partition granularity
    */
@@ -586,7 +584,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     uint256 timeToExpiration,
     bytes32 secretHash,
     bytes calldata certificate
-  ) 
+  )
     external
     returns (bool)
   {
@@ -730,11 +728,11 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       _canHoldOrCanPreHold(token, msg.sender, sender, certificate),
       "A hold can only be created with adapted authorizations"
     );
-    
+
     if (sender != address(0)) { // hold (tokens already exist)
       require(value <= _spendableBalanceOfByPartition(token, partition, sender), "Amount of the hold can't be greater than the spendable balance of the sender");
     }
-    
+
     newHold.partition = partition;
     newHold.sender = sender;
     newHold.recipient = recipient;
@@ -860,7 +858,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       _canHoldOrCanPreHold(token, msg.sender, renewableHold.sender, certificate),
       "A hold can only be renewed with adapted authorizations"
     );
-    
+
     uint256 oldExpiration = renewableHold.expiration;
     renewableHold.expiration = expiration;
 
@@ -902,7 +900,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       true
     );
   }
-  
+
   /**
    * @dev Execute hold.
    */
@@ -951,7 +949,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       } else { // post-hold (tokens already exist)
         IERC1400(token).operatorTransferByPartition(executableHold.partition, executableHold.sender, executableHold.recipient, value, "", "");
       }
-      
+
     } else {
       revert("hold can not be executed");
     }
@@ -1000,10 +998,10 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
   {
     if(executableHold.sender != address(0)) { // In case tokens already exist, decrease held balance
       _decreaseHeldBalance(token, executableHold, heldBalanceDecrease);
-    } 
+    }
 
     executableHold.status = HoldStatusCode.ExecutedAndKeptOpen;
-    executableHold.value = executableHold.value.sub(value);
+    executableHold.value -= value;
 
     emit HoldExecutedAndKeptOpen(
       token,
@@ -1019,22 +1017,22 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
    * @dev Increase held balance.
    */
   function _increaseHeldBalance(address token, Hold storage executableHold, bytes32/*holdId*/) private {
-    _heldBalance[token][executableHold.sender] = _heldBalance[token][executableHold.sender].add(executableHold.value);
-    _totalHeldBalance[token] = _totalHeldBalance[token].add(executableHold.value);
+    _heldBalance[token][executableHold.sender] += executableHold.value;
+    _totalHeldBalance[token] += executableHold.value;
 
-    _heldBalanceByPartition[token][executableHold.sender][executableHold.partition] = _heldBalanceByPartition[token][executableHold.sender][executableHold.partition].add(executableHold.value);
-    _totalHeldBalanceByPartition[token][executableHold.partition] = _totalHeldBalanceByPartition[token][executableHold.partition].add(executableHold.value);
+    _heldBalanceByPartition[token][executableHold.sender][executableHold.partition] += executableHold.value;
+    _totalHeldBalanceByPartition[token][executableHold.partition] += executableHold.value;
   }
 
   /**
    * @dev Decrease held balance.
    */
   function _decreaseHeldBalance(address token, Hold storage executableHold, uint256 value) private {
-    _heldBalance[token][executableHold.sender] = _heldBalance[token][executableHold.sender].sub(value);
-    _totalHeldBalance[token] = _totalHeldBalance[token].sub(value);
+    _heldBalance[token][executableHold.sender] -= value;
+    _totalHeldBalance[token] -= value;
 
-    _heldBalanceByPartition[token][executableHold.sender][executableHold.partition] = _heldBalanceByPartition[token][executableHold.sender][executableHold.partition].sub(value);
-    _totalHeldBalanceByPartition[token][executableHold.partition] = _totalHeldBalanceByPartition[token][executableHold.partition].sub(value);
+    _heldBalanceByPartition[token][executableHold.sender][executableHold.partition] -= value;
+    _totalHeldBalanceByPartition[token][executableHold.partition] -= value;
   }
 
   /**
@@ -1055,7 +1053,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     uint256 expiration = 0;
 
     if (timeToExpiration != 0) {
-        expiration = block.timestamp.add(timeToExpiration);
+        expiration = block.timestamp + timeToExpiration;
     }
 
     return expiration;
@@ -1091,7 +1089,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     bytes32 holdId = _holdIds[holdHash];
 
     return (holdHash, holdId);
-  }  
+  }
 
   /**
    * @dev Check if hold can be executed
@@ -1134,7 +1132,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     } else {
       return false;
     }
-  }  
+  }
 
   /**
    * @dev Retrieve hold data.
@@ -1224,14 +1222,14 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
    * @dev Check if hold (or pre-hold) can be created.
    * @return 'true' if the operator can create pre-holds, 'false' if not.
    */
-  function _canHoldOrCanPreHold(address token, address operator, address sender, bytes memory certificate) internal returns(bool) { 
+  function _canHoldOrCanPreHold(address token, address operator, address sender, bytes memory certificate) internal returns(bool) {
     (bool canValidateCertificate, CertificateValidation certificateControl, bytes32 salt) = _canValidateCertificateToken(token, msg.data, operator, certificate);
     _useCertificateIfActivated(token, certificateControl, operator, salt);
 
     if (sender != address(0)) { // hold
       return canValidateCertificate && (_isTokenController[token][operator] || operator == sender);
     } else { // pre-hold
-      return canValidateCertificate && IMinterRole(token).isMinter(operator); 
+      return canValidateCertificate && IMinterRole(token).isMinter(operator);
     }
   }
 
@@ -1281,7 +1279,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
    * @return 'true' if 'value' is a multiple of 'granularity'.
    */
   function _isMultiple(uint256 granularity, uint256 value) internal pure returns(bool) {
-    return(value.div(granularity).mul(granularity) == value);
+    return(value / granularity) * granularity == value;
   }
 
   /**
@@ -1336,8 +1334,8 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     // Perform ecrecover to ensure message information corresponds to certificate
     if (v == 27 || v == 28) {
       // Extract certificate from payload
-      bytes memory payloadWithoutCertificate = new bytes(payloadWithCertificate.length.sub(160));
-      for (uint i = 0; i < payloadWithCertificate.length.sub(160); i++) { // replace 4 bytes corresponding to function selector
+      bytes memory payloadWithoutCertificate = new bytes(payloadWithCertificate.length - 160);
+      for (uint i = 0; i < payloadWithCertificate.length - 160; i++) { // replace 4 bytes corresponding to function selector
         payloadWithoutCertificate[i] = payloadWithCertificate[i];
       }
 
@@ -1351,7 +1349,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
       );
       bytes32 hash = keccak256(
         abi.encodePacked(
-          DomainAware(token).generateDomainSeparator(),
+          DomainAwareUpgradeable(token).generateDomainSeparator(),
           keccak256(pack)
         )
       );
@@ -1428,8 +1426,8 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
     // Perform ecrecover to ensure message information corresponds to certificate
     if (v == 27 || v == 28) {
       // Extract certificate from payload
-      bytes memory payloadWithoutCertificate = new bytes(payloadWithCertificate.length.sub(192));
-      for (uint i = 0; i < payloadWithCertificate.length.sub(192); i++) { // replace 4 bytes corresponding to function selector
+      bytes memory payloadWithoutCertificate = new bytes(payloadWithCertificate.length - 192);
+      for (uint i = 0; i < payloadWithCertificate.length - 192; i++) { // replace 4 bytes corresponding to function selector
         payloadWithoutCertificate[i] = payloadWithCertificate[i];
       }
 
@@ -1444,7 +1442,7 @@ contract ERC1400TokensValidator is IERC1400TokensValidator, Pausable, Certificat
 
       bytes32 hash = keccak256(
         abi.encodePacked(
-          DomainAware(token).generateDomainSeparator(),
+          DomainAwareUpgradeable(token).generateDomainSeparator(),
           keccak256(pack)
         )
       );

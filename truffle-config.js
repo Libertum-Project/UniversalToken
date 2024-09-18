@@ -59,7 +59,7 @@ module.exports = {
   plugins: ["solidity-coverage", "truffle-contract-size", "truffle-plugin-verify"],
   compilers: {
     solc: {
-      version: '0.8.7',
+      version: '0.8.20',
       settings: {
         optimizer: {
           enabled: true, // Default: false
