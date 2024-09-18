@@ -60,7 +60,7 @@ interface IERC1400 is IERC20, IERC1643 {
   //
   // function canTransfer(address to, uint256 value, bytes calldata data) external view returns (byte, bytes32);
   // function canTransferFrom(address from, address to, uint256 value, bytes calldata data) external view returns (byte, bytes32);
-  // function canTransferByPartition(address from, address to, bytes32 partition, uint256 value, bytes calldata data) external view returns (byte, bytes32, bytes32);    
+  // function canTransferByPartition(address from, address to, bytes32 partition, uint256 value, bytes calldata data) external view returns (byte, bytes32, bytes32);
 
   // ******************* Controller Events ********************
   // We don't use this event as we don't use "controllerTransfer"
@@ -100,6 +100,7 @@ interface IERC1400 is IERC20, IERC1643 {
   );
 
   // ******************** Operator Events *********************
+  event ControllersUpdated(address[] controller);
   event AuthorizedOperator(address indexed operator, address indexed tokenHolder);
   event RevokedOperator(address indexed operator, address indexed tokenHolder);
   event AuthorizedOperatorByPartition(bytes32 indexed partition, address indexed operator, address indexed tokenHolder);
@@ -120,7 +121,7 @@ interface IERC1400 is IERC20, IERC1643 {
  * on success or failure based on the ERC-1066 application-specific status codes specified below.
  * An implementation can also return arbitrary data as a bytes32 to provide additional
  * information not captured by the reason code.
- * 
+ *
  * Code	Reason
  * 0x50	transfer failure
  * 0x51	transfer success
@@ -131,14 +132,14 @@ interface IERC1400 is IERC20, IERC1643 {
  * 0x56	invalid sender
  * 0x57	invalid receiver
  * 0x58	invalid operator (transfer agent)
- * 0x59	
- * 0x5a	
- * 0x5b	
- * 0x5a	
- * 0x5b	
- * 0x5c	
- * 0x5d	
- * 0x5e	
+ * 0x59
+ * 0x5a
+ * 0x5b
+ * 0x5a
+ * 0x5b
+ * 0x5c
+ * 0x5d
+ * 0x5e
  * 0x5f	token meta or info
  *
  * These codes are being discussed at: https://ethereum-magicians.org/t/erc-1066-ethereum-status-codes-esc/283/24

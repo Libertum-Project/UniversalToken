@@ -1300,6 +1300,7 @@ contract ERC1400Upgradeable is IERC20, IERC1400, ERC1400Storage, OwnableUpgradea
       $.isController[operators[j]] = true;
     }
     $.controllers = operators;
+    emit ControllersUpdated(operators);
   }
   /**
    * @dev Set list of token partition controllers.
